@@ -331,9 +331,9 @@ HTML_CONTENT = """<!DOCTYPE html>
           <td>${a.data}</td>
           <td><span class="badge ${tipoBadge}">${a.tipo}</span></td>
           <td>${a.qtd}</td>
-          <td>R$ ${a.preco_medio}</td>
+          <td>${a.preco_medio}</td>
           <td><span class="badge ${modBadge}">${a.modalidade}</span></td>
-          <td>R$ ${a.custos}</td>
+          <td>${a.custos}</td>
           <td><span class="badge ${opBadge}">${a.operacao}</span></td>
         `;
         atvBody.appendChild(tr);
