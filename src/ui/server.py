@@ -42,7 +42,7 @@ HTML_CONTENT = """<!DOCTYPE html>
       min-height: 100vh;
     }
     .container {
-      max-width: 1000px;
+      max-width: 1150px;
       margin: 0 auto;
     }
     header {
@@ -126,19 +126,19 @@ HTML_CONTENT = """<!DOCTYPE html>
     table {
       width: 100%;
       border-collapse: collapse;
-      font-size: 0.9rem;
+      font-size: 0.85rem;
       text-align: left;
     }
     th {
       background-color: #0f172a;
       color: var(--text-muted);
-      padding: 0.75rem 1rem;
+      padding: 0.65rem 0.6rem;
       font-weight: 600;
       border-bottom: 1px solid var(--card-border);
       white-space: nowrap;
     }
     td {
-      padding: 0.75rem 1rem;
+      padding: 0.65rem 0.6rem;
       border-bottom: 1px solid #293548;
       white-space: nowrap;
     }
