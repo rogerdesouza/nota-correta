@@ -1,0 +1,33 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+build/
+dist/
+*.spec
+
+# Ambientes virtuais e libs locais
+.venv/
+env/
+venv/
+ENV/
+libs/
+
+# Arquivos de ambiente e IDE
+.env
+.vscode/
+.idea/
+
+# Arquivos de dados de teste e PDFs pessoais
+data/*.pdf
+data/*.csv
+*.pdf
+
+# Logs e arquivos de sistema
+*.log
+.DS_Store
