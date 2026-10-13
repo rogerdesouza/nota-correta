@@ -1,0 +1,988 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NotaCorreta - Extrator de Notas de Corretagem B3</title>
+  
+  <!-- PDF.js da Mozilla para leitura 100% local e offline no navegador -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script>
+    if (typeof pdfjsLib === 'undefined') {
+      document.write('<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"><\/script>');
+    }
+  </script>
+  <script>
+    if (typeof pdfjsLib !== 'undefined') {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    }
+  </script>
+
+  <style>
+    :root {
+      --primary: #ff7900;
+      --primary-hover: #e06b00;
+      --bg: #0f172a;
+      --card-bg: #1e293b;
+      --card-border: #334155;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --success: #10b981;
+      --danger: #ef4444;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      padding: 2rem 1rem;
+      min-height: 100vh;
+    }
+    .container {
+      max-width: 1150px;
+      margin: 0 auto;
+    }
+    header {
+      text-align: center;
+      margin-bottom: 2rem;
+    }
+    h1 {
+      font-size: 2.2rem;
+      font-weight: 700;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+    }
+    h1 span { color: var(--primary); }
+    p.subtitle {
+      color: var(--text-muted);
+      margin-top: 0.5rem;
+      font-size: 0.95rem;
+    }
+    .privacy-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      background-color: rgba(16, 185, 129, 0.15);
+      color: #34d399;
+      padding: 0.35rem 0.8rem;
+      border-radius: 9999px;
+      font-size: 0.8rem;
+      font-weight: 500;
+      margin-top: 0.75rem;
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+    .upload-card {
+      background-color: var(--card-bg);
+      border: 2px dashed var(--card-border);
+      border-radius: 12px;
+      padding: 2.5rem 1.5rem;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      margin-bottom: 2rem;
+    }
+    .upload-card:hover, .upload-card.dragover {
+      border-color: var(--primary);
+      background-color: rgba(255, 121, 0, 0.05);
+    }
+    .upload-icon {
+      font-size: 2.8rem;
+      margin-bottom: 0.75rem;
+    }
+    .btn {
+      background-color: var(--primary);
+      color: white;
+      border: none;
+      padding: 0.7rem 1.5rem;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      transition: background 0.2s;
+    }
+    .btn:hover { background-color: var(--primary-hover); }
+    .btn-secondary {
+      background-color: #475569;
+    }
+    .btn-secondary:hover { background-color: #64748b; }
+    .btn-group {
+      display: flex;
+      gap: 1rem;
+      justify-content: center;
+      margin-top: 1.5rem;
+    }
+    .section-title {
+      font-size: 1.25rem;
+      font-weight: 600;
+      margin: 1.5rem 0 0.75rem 0;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      color: #e2e8f0;
+    }
+    .table-container {
+      background-color: var(--card-bg);
+      border-radius: 10px;
+      border: 1px solid var(--card-border);
+      overflow-x: auto;
+      margin-bottom: 1.5rem;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+      text-align: left;
+    }
+    th {
+      background-color: #0f172a;
+      color: var(--text-muted);
+      padding: 0.65rem 0.6rem;
+      font-weight: 600;
+      border-bottom: 1px solid var(--card-border);
+      white-space: nowrap;
+    }
+    td {
+      padding: 0.65rem 0.6rem;
+      border-bottom: 1px solid #293548;
+      white-space: nowrap;
+    }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background-color: rgba(255, 255, 255, 0.02); }
+    .badge {
+      display: inline-block;
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+    .badge-compra { background-color: rgba(16, 185, 129, 0.2); color: #34d399; }
+    .badge-venda { background-color: rgba(239, 68, 68, 0.2); color: #f87171; }
+    .badge-fii { background-color: rgba(59, 130, 246, 0.2); color: #60a5fa; }
+    .badge-acao { background-color: rgba(168, 85, 247, 0.2); color: #c084fc; }
+    .badge-swing { background-color: #334155; color: #cbd5e1; }
+    .badge-day { background-color: rgba(245, 158, 11, 0.2); color: #fbbf24; }
+    .loading {
+      display: none;
+      text-align: center;
+      margin: 1.5rem 0;
+      color: var(--text-muted);
+    }
+    .spinner {
+      border: 3px solid rgba(255,255,255,0.1);
+      border-top: 3px solid var(--primary);
+      border-radius: 50%;
+      width: 28px;
+      height: 28px;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 0.75rem auto;
+    }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    .alert-error {
+      background-color: rgba(239, 68, 68, 0.15);
+      border: 1px solid var(--danger);
+      color: #fca5a5;
+      padding: 0.75rem 1rem;
+      border-radius: 8px;
+      margin-bottom: 1rem;
+      display: none;
+    }
+    footer {
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.8rem;
+      margin-top: 3rem;
+      border-top: 1px solid var(--card-border);
+      padding-top: 1.5rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Nota<span>Correta</span> 📊</h1>
+      <p class="subtitle">Extrator de notas de corretagem (B3 / SINACOR - Banco Inter e outras corretoras)</p>
+      <div class="privacy-badge">
+        🔒 100% Offline e Privado: Seus PDFs são processados dentro do seu navegador e nunca saem do dispositivo.
+      </div>
+    </header>
+
+    <div class="alert-error" id="error-box"></div>
+
+    <div class="upload-card" id="drop-zone" onclick="document.getElementById('file-input').click()">
+      <div class="upload-icon">📄</div>
+      <h3 style="font-size: 1.1rem; margin-bottom: 0.5rem;">Arraste suas notas de corretagem em PDF aqui</h3>
+      <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 1rem;">ou clique para selecionar do seu dispositivo</p>
+      <button type="button" class="btn" style="pointer-events: none;">Selecionar Arquivo PDF</button>
+      <input type="file" id="file-input" accept=".pdf" multiple style="display: none;" onchange="handleFileSelect(event)">
+    </div>
+
+    <div class="loading" id="loading">
+      <div class="spinner"></div>
+      <div id="loading-text">Processando nota de corretagem...</div>
+    </div>
+
+    <div id="results" style="display: none;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.75rem;">
+        <h2 style="font-size: 1.3rem;">Resultado da Extração</h2>
+        <button class="btn" onclick="downloadCSV()">⬇ Baixar Relatório em CSV</button>
+      </div>
+
+      <div class="section-title">📊 Resumo Consolidado por Modalidade</div>
+      <div class="table-container">
+        <table id="modalidades-table">
+          <thead>
+            <tr>
+              <th>Modalidade</th>
+              <th>Qtd Ops</th>
+              <th>Total Compras</th>
+              <th>Total Vendas</th>
+              <th>Volume Total</th>
+              <th>Resultado Bruto</th>
+              <th>Taxas Rateadas</th>
+              <th>Resultado Líquido</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <div class="section-title">💼 Consolidado por Ativo</div>
+      <div class="table-container">
+        <table id="ativos-table">
+          <thead>
+            <tr>
+              <th>Ativo</th>
+              <th>Data</th>
+              <th>Tipo</th>
+              <th>Qtd</th>
+              <th>Preço Médio</th>
+              <th>Modalidade</th>
+              <th>Custos</th>
+              <th>Operação</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <div class="btn-group">
+        <button class="btn" onclick="downloadCSV()">⬇ Baixar CSV Consolidado</button>
+        <button class="btn btn-secondary" onclick="resetForm()">Novo Arquivo</button>
+      </div>
+    </div>
+
+    <footer>
+      NotaCorreta • Aplicação estática e portátil • Sem necessidade de instalação • Funciona em qualquer navegador
+    </footer>
+  </div>
+
+  <script>
+    // ==========================================
+    // 1. DICIONÁRIO E REGRAS DE ATIVOS DA B3
+    // ==========================================
+    const MAPA_NOMES_TICKERS = {
+      "ENGIE BRASIL": "EGIE3",
+      "ENGIE": "EGIE3",
+      "AXIA ENERGIA": "AXIA3",
+      "AXIA": "AXIA3",
+      "VALE": "VALE3",
+      "PETROBRAS": "PETR4",
+      "ITAU UNIBANCO": "ITUB4",
+      "ITAU": "ITUB4",
+      "BRADESCO": "BBDC4",
+      "BANCO DO BRASIL": "BBAS3",
+      "ELETROBRAS": "ELET3",
+      "WEG": "WEGE3",
+      "SUZANO": "SUZB3",
+      "KLABIN": "KLBN11",
+      "TAESA": "TAEE11",
+      "SANEPAR": "SAPR11",
+      "COPEL": "CPLE6",
+      "CEMIG": "CMIG4",
+      "EQUATORIAL": "EQTL3",
+      "RUMO": "RAIL3",
+      "COSAN": "CSAN3",
+      "AMBEV": "ABEV3",
+      "MAGALU": "MGLU3",
+      "MAGAZINE LUIZA": "MGLU3",
+      "LOJAS RENNER": "LREN3",
+      "LOCALIZA": "RENT3",
+      "B3": "B3SA3",
+      "BB SEGURIDADE": "BBSE3",
+      "CSN": "CSNA3",
+      "CSN MINERACAO": "CMIN3",
+      "GERDAU": "GGBR4",
+      "USIMINAS": "USIM5",
+      "VIBRA": "VBBR3",
+      "PRIO": "PRIO3",
+      "PETRORIO": "PRIO3",
+      "BRAVA": "BRAV3",
+      "RAIZEN": "RAIZ4",
+      "ALUPAR": "ALUP11",
+      "AUREN": "AURE3",
+      "SABESP": "SBSP3",
+      "CYRELA": "CYRE3",
+      "HAPVIDA": "HAPV3",
+      "REDE D OR": "RDOR3",
+      "TOTVS": "TOTS3",
+      "EMBRAER": "EMBR3",
+    };
+
+    function parsePtBrFloat(valStr) {
+      if (!valStr) return 0.0;
+      const clean = valStr.trim().replace(/\./g, "").replace(",", ".");
+      const num = parseFloat(clean);
+      return isNaN(num) ? 0.0 : num;
+    }
+
+    function formatPtBr(num, decimals = 2) {
+      if (num === null || num === undefined) return "-";
+      return num.toLocaleString("pt-BR", {
+        minimumFractionDigits: decimals,
+        maximumFractionDigits: decimals
+      });
+    }
+
+    function extrairTicker(especificacao) {
+      const esp = especificacao.trim();
+      const espUpper = esp.toUpperCase();
+
+      // 1. Ticker direto com 4 letras e código (ex: PETR4, VALE3, MXRF11)
+      const matchDireto = espUpper.match(/\b([A-Z]{4}\d{1,2}[A-Z]?)\b/);
+      if (matchDireto) return matchDireto[1];
+
+      // 2. Mapeamento por nome de empresa brasileira da B3
+      for (const [nome, ticker] of Object.entries(MAPA_NOMES_TICKERS)) {
+        if (espUpper.includes(nome)) {
+          if (espUpper.includes(" PN ") && ticker.endsWith("3")) {
+            return ticker.slice(0, -1) + "4";
+          }
+          return ticker;
+        }
+      }
+
+      // 3. Padrão invertido SINACOR (ex: 'ON NM VALE', 'PN N2 PETR')
+      const termosControle = new Set([
+        "ON", "PN", "PNA", "PNB", "PNC", "PND", "NM", "N1", "N2",
+        "MA", "M2", "MB", "ED", "EJ", "EB", "EX", "REC", "DIR", "FRA", "VIS", "FII"
+      ]);
+      const tokens = esp.match(/[A-Za-z0-9]+/g) || [];
+      let tickerBase = null;
+      let tipoAcao = null;
+
+      for (const t of tokens) {
+        const tu = t.toUpperCase();
+        if (["ON", "PN", "PNA", "PNB", "UNT", "UNIT", "CI"].includes(tu)) {
+          tipoAcao = tu;
+        } else if (tu.length === 4 && /^[A-Z]+$/.test(tu) && !termosControle.has(tu)) {
+          tickerBase = tu;
+        }
+      }
+
+      if (tickerBase) {
+        if (tipoAcao === "ON") return tickerBase + "3";
+        if (tipoAcao === "PN") return tickerBase + "4";
+        if (tipoAcao === "PNA") return tickerBase + "5";
+        if (tipoAcao === "PNB") return tickerBase + "6";
+        if (tipoAcao === "UNT" || tipoAcao === "UNIT") return tickerBase + "11";
+        return tickerBase + "3";
+      }
+
+      const palavras = esp.split(/\s+/);
+      return palavras.length > 0 ? palavras[palavras.length - 1] : "ATIVO";
+    }
+
+    function classificarTipoAtivo(ticker, especificacao) {
+      const espUpper = (especificacao || "").toUpperCase();
+      const tickUpper = (ticker || "").toUpperCase();
+
+      const termosFii = ["FII", "FDO INV IMOB", "IMOBILIARIO", "IMOB"];
+      if (termosFii.some(t => espUpper.includes(t))) return "F";
+
+      if (tickUpper.endsWith("11")) {
+        const unitsAcoes = ["TAEE11", "KLBN11", "SAPR11", "SANB11", "BPAC11", "ALUP11", "ENGI11", "SULA11"];
+        if (unitsAcoes.includes(tickUpper) || espUpper.includes("UNT") || espUpper.includes("UNIT")) {
+          return "A";
+        }
+        if (espUpper.includes("CI") || espUpper.includes("FDO")) return "F";
+      }
+      return "A";
+    }
+
+    // ==========================================
+    // 2. PARSER DE NOTAS DE CORRETAGEM (SINACOR)
+    // ==========================================
+    const OPERACAO_REGEX = /^(?:(\d+)\s+)?((?:\d\s*-\s*)?BOVESPA|Bovespa)\s+([CV])\s+(VISTA|VIS|FRACIONARIO|FRACION[AÁ]RIO|FRA|OPCAO|OP[CÇ][AÃ]O[^\d]*?|TERMO|LEILAO)\s+(.+)$/i;
+    const VALORES_FINAIS_REGEX = /^(.*?)\s+(?:([DAH\*#2])\s+)?(\d[\d\.]*)\s+(\d[\d\.]*,\d{2,4})\s+(\d[\d\.]*,\d{2})\s+([DC])$/i;
+
+    function extrairLinhasPagina(textContent) {
+      const items = textContent.items;
+      if (!items || items.length === 0) return [];
+
+      const linesMap = [];
+      items.forEach(item => {
+        if (!item.str || item.str.trim() === "") return;
+        const y = item.transform[5];
+        const x = item.transform[4];
+        
+        let line = linesMap.find(l => Math.abs(l.y - y) < 4);
+        if (!line) {
+          line = { y: y, items: [] };
+          linesMap.push(line);
+        }
+        line.items.push({ x: x, str: item.str });
+      });
+
+      linesMap.sort((a, b) => b.y - a.y);
+
+      return linesMap.map(line => {
+        line.items.sort((a, b) => a.x - b.x);
+        let str = "";
+        line.items.forEach(it => {
+          const s = it.str.trim();
+          if (!s) return;
+          if (str && !str.endsWith(" ") && !s.startsWith(" ")) {
+            str += " ";
+          }
+          str += s;
+        });
+        return str.trim();
+      }).filter(l => l.length > 0);
+    }
+
+    function extrairCustos(textoCompleto, custosObj) {
+      const patterns = [
+        ["taxa_liquidacao", /Taxa\s*(?:de)?\s*liquida[cç][aã]o[:\s]*(?:R\$\s*)?([\d\.]+,\d{2})/i],
+        ["taxa_registro", /Taxa\s*(?:de)?\s*Registro[:\s]*(?:R\$\s*)?([\d\.]+,\d{2})/i],
+        ["emolumentos", /Emolumentos[:\s]*(?:R\$\s*)?([\d\.]+,\d{2})/i],
+        ["taxa_termo_opcoes", /Taxa\s*(?:de)?\s*termo\/op[cç][oõ]es[:\s]*(?:R\$\s*)?([\d\.]+,\d{2})/i],
+        ["taxa_ana", /Taxa\s*A\.?N\.?A\.?[:\s]*(?:R\$\s*)?([\d\.]+,\d{2})/i],
+        ["corretagem", /Corretagem(?:\s*\/\s*Despesas)?[:\s]*(?:R\$\s*)?([\d\.]+,\d{2})/i],
+        ["iss", /ISS(?:\s*\/\s*Impostos)?[:\s]*(?:R\$\s*)?([\d\.]+,\d{2})/i],
+        ["irrf", /I\.?R\.?R\.?F\.?.*?[:\s]*(?:R\$\s*)?([\d\.]+,\d{2})/i],
+        ["outras_bovespa", /Outras\s*(?:Bovespa)?[:\s]*(?:R\$\s*)?([\d\.]+,\d{2})/i]
+      ];
+
+      for (const [key, regex] of patterns) {
+        const m = textoCompleto.match(regex);
+        if (m) {
+          const val = parsePtBrFloat(m[1]);
+          if (val > 0) custosObj[key] = val;
+        }
+      }
+
+      const totalMatch = textoCompleto.match(/Total\s*(?:Custos|Despesas|Custos\s*\/\s*Despesas)[:\s]*(?:R\$\s*)?([\d\.]+,\d{2})/i);
+      if (totalMatch) {
+        custosObj.total_custos = parsePtBrFloat(totalMatch[1]);
+      }
+
+      const somaTaxas = Number((
+        (custosObj.taxa_liquidacao || 0) +
+        (custosObj.taxa_registro || 0) +
+        (custosObj.emolumentos || 0) +
+        (custosObj.corretagem || 0) +
+        (custosObj.iss || 0) +
+        (custosObj.outras_bovespa || 0) +
+        (custosObj.taxa_termo_opcoes || 0) +
+        (custosObj.taxa_ana || 0)
+      ).toFixed(2));
+
+      if (somaTaxas > (custosObj.total_custos || 0)) {
+        custosObj.total_custos = somaTaxas;
+      }
+    }
+
+    async function parsePdfArrayBuffer(arrayBuffer) {
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      const notas = [];
+      let notaAtual = null;
+
+      for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+        const page = await pdf.getPage(pageNum);
+        const textContent = await page.getTextContent();
+        const linhas = extrairLinhasPagina(textContent);
+        const textPagina = linhas.join("\n");
+
+        if (!textPagina.trim()) continue;
+
+        // Cabeçalho da nota
+        let numNotaEncontrado = null;
+        let dataStr = null;
+
+        const mHeaderMulti = textPagina.match(/Nr\.\s*nota\s+Folha\s+Data\s+preg[aã]o\s*\n\s*(\d+)\s+(\d+)\s+(\d{2}\/\d{2}\/\d{4})/i);
+        if (mHeaderMulti) {
+          numNotaEncontrado = mHeaderMulti[1];
+          dataStr = mHeaderMulti[3];
+        } else {
+          const mNum = textPagina.match(/(?:Nr\.|N[úu]mero|Nº)\s*(?:da)?\s*nota[:\s]*(\d+)/i);
+          const mData = textPagina.match(/Data\s*(?:do)?\s*preg[aã]o[:\s]*(\d{2}\/\d{2}\/\d{4})/i);
+          if (mNum) numNotaEncontrado = mNum[1];
+          if (mData) dataStr = mData[1];
+        }
+
+        let isNovaNota = false;
+        if (!notaAtual) {
+          isNovaNota = true;
+        } else if (numNotaEncontrado !== null && numNotaEncontrado !== notaAtual.numero_nota) {
+          isNovaNota = true;
+        }
+
+        if (isNovaNota) {
+          notaAtual = {
+            numero_nota: numNotaEncontrado || `nota_${pageNum}`,
+            data_pregao: dataStr || "",
+            operacoes: [],
+            custos: { total_custos: 0.0 }
+          };
+          notas.push(notaAtual);
+        } else if (!notaAtual.data_pregao && dataStr) {
+          notaAtual.data_pregao = dataStr;
+        }
+
+        // Operações
+        let inNegocios = false;
+        for (const linha of linhas) {
+          const l = linha.trim();
+          if (/neg[oó]cios\s+realizados/i.test(l) || (l.toLowerCase().includes("negocia") && l.toLowerCase().includes("tipo mercado"))) {
+            inNegocios = true;
+            continue;
+          }
+          if (inNegocios && /resumo\s+dos\s+neg[oó]cios|resumo\s+financeiro/i.test(l)) {
+            inNegocios = false;
+            break;
+          }
+          if (!inNegocios && !/bovespa\s+[CV]\s+/i.test(l)) {
+            continue;
+          }
+
+          const mOp = l.match(OPERACAO_REGEX);
+          if (!mOp) continue;
+
+          const tipoOp = mOp[3].toUpperCase();
+          const tipoMercado = mOp[4].toUpperCase();
+          const resto = mOp[5].trim();
+
+          const mVal = resto.match(VALORES_FINAIS_REGEX);
+          if (mVal) {
+            const especificacao = mVal[1].trim();
+            const obs = mVal[2] || "";
+            const qtd = parseInt(mVal[3].replace(/\./g, ""), 10);
+            const preco = parsePtBrFloat(mVal[4]);
+            const valor = parsePtBrFloat(mVal[5]);
+            const dc = mVal[6].toUpperCase();
+            const ticker = extrairTicker(especificacao);
+
+            notaAtual.operacoes.push({
+              tipo_operacao: tipoOp,
+              tipo_mercado: tipoMercado,
+              especificacao_titulo: especificacao,
+              ticker: ticker,
+              observacao: obs,
+              quantidade: qtd,
+              preco_unitario: preco,
+              valor_total: valor,
+              debito_credito: dc,
+              is_day_trade: (obs === "D")
+            });
+          }
+        }
+
+        // Custos e taxas
+        extrairCustos(textPagina, notaAtual.custos);
+      }
+
+      return notas;
+    }
+
+    // ==========================================
+    // 3. CALCULADORA (DAY TRADE VS SWING TRADE)
+    // ==========================================
+    function processarNotas(notas) {
+      const resultados = [];
+
+      for (const nota of notas) {
+        const opsPorTicker = {};
+        for (const op of nota.operacoes) {
+          if (!opsPorTicker[op.ticker]) {
+            opsPorTicker[op.ticker] = { C: [], V: [] };
+          }
+          opsPorTicker[op.ticker][op.tipo_operacao].push(op);
+        }
+
+        const itensConsolidados = [];
+        let dtComprasVal = 0.0;
+        let dtVendasVal = 0.0;
+        let dtOpsCount = 0;
+
+        let stComprasVal = 0.0;
+        let stVendasVal = 0.0;
+        let stOpsCount = 0;
+
+        for (const [ticker, dic] of Object.entries(opsPorTicker)) {
+          const compras = dic.C;
+          const vendas = dic.V;
+
+          const qtdC = compras.reduce((acc, c) => acc + c.quantidade, 0);
+          const valC = compras.reduce((acc, c) => acc + c.valor_total, 0);
+
+          const qtdV = vendas.reduce((acc, v) => acc + v.quantidade, 0);
+          const valV = vendas.reduce((acc, v) => acc + v.valor_total, 0);
+
+          const pmC = qtdC > 0 ? Number((valC / qtdC).toFixed(4)) : 0.0;
+          const pmV = qtdV > 0 ? Number((valV / qtdV).toFixed(4)) : 0.0;
+
+          const especExemplo = compras.length > 0 ? compras[0].especificacao_titulo : (vendas.length > 0 ? vendas[0].especificacao_titulo : "");
+
+          if (qtdC > 0 && qtdV > 0) {
+            const qtdCasadaDt = Math.min(qtdC, qtdV);
+            const valCDt = Number((pmC * qtdCasadaDt).toFixed(2));
+            itensConsolidados.push({
+              ticker,
+              operacao: "C",
+              modalidade: "D",
+              qtd: qtdCasadaDt,
+              preco_medio: pmC,
+              valor_total: valCDt,
+              espec: especExemplo
+            });
+            dtComprasVal += valCDt;
+
+            const valVDt = Number((pmV * qtdCasadaDt).toFixed(2));
+            itensConsolidados.push({
+              ticker,
+              operacao: "V",
+              modalidade: "D",
+              qtd: qtdCasadaDt,
+              preco_medio: pmV,
+              valor_total: valVDt,
+              espec: especExemplo
+            });
+            dtVendasVal += valVDt;
+            dtOpsCount += compras.length + vendas.length;
+
+            if (qtdC > qtdCasadaDt) {
+              const sobraC = qtdC - qtdCasadaDt;
+              const valCSt = Number((valC - valCDt).toFixed(2));
+              itensConsolidados.push({
+                ticker,
+                operacao: "C",
+                modalidade: "S",
+                qtd: sobraC,
+                preco_medio: pmC,
+                valor_total: valCSt,
+                espec: especExemplo
+              });
+              stComprasVal += valCSt;
+              stOpsCount += 1;
+            }
+
+            if (qtdV > qtdCasadaDt) {
+              const sobraV = qtdV - qtdCasadaDt;
+              const valVSt = Number((valV - valVDt).toFixed(2));
+              itensConsolidados.push({
+                ticker,
+                operacao: "V",
+                modalidade: "S",
+                qtd: sobraV,
+                preco_medio: pmV,
+                valor_total: valVSt,
+                espec: especExemplo
+              });
+              stVendasVal += valVSt;
+              stOpsCount += 1;
+            }
+          } else if (qtdC > 0) {
+            itensConsolidados.push({
+              ticker,
+              operacao: "C",
+              modalidade: "S",
+              qtd: qtdC,
+              preco_medio: pmC,
+              valor_total: Number(valC.toFixed(2)),
+              espec: especExemplo
+            });
+            stComprasVal += valC;
+            stOpsCount += compras.length;
+          } else if (qtdV > 0) {
+            itensConsolidados.push({
+              ticker,
+              operacao: "V",
+              modalidade: "S",
+              qtd: qtdV,
+              preco_medio: pmV,
+              valor_total: Number(valV.toFixed(2)),
+              espec: especExemplo
+            });
+            stVendasVal += valV;
+            stOpsCount += vendas.length;
+          }
+        }
+
+        dtComprasVal = Number(dtComprasVal.toFixed(2));
+        dtVendasVal = Number(dtVendasVal.toFixed(2));
+        const dtVolTotal = Number((dtComprasVal + dtVendasVal).toFixed(2));
+
+        stComprasVal = Number(stComprasVal.toFixed(2));
+        stVendasVal = Number(stVendasVal.toFixed(2));
+        const stVolTotal = Number((stComprasVal + stVendasVal).toFixed(2));
+
+        const volTotal = Number((dtVolTotal + stVolTotal).toFixed(2));
+        const totalCustosNota = nota.custos.total_custos || 0.0;
+
+        let dtTaxas = 0.0;
+        let stTaxas = 0.0;
+
+        if (volTotal > 0 && totalCustosNota > 0) {
+          dtTaxas = Number((totalCustosNota * (dtVolTotal / volTotal)).toFixed(2));
+          stTaxas = Number((totalCustosNota - dtTaxas).toFixed(2));
+        }
+
+        let dtResBruto = null;
+        let dtResLiq = null;
+        if (dtVolTotal > 0) {
+          dtResBruto = Number((dtVendasVal - dtComprasVal).toFixed(2));
+          dtResLiq = Number((dtResBruto - dtTaxas).toFixed(2));
+        }
+
+        // Ordenação: Swing Trade primeiro (C depois V), Day Trade depois (C depois V)
+        itensConsolidados.sort((a, b) => {
+          const modA = a.modalidade === "S" ? 0 : 1;
+          const modB = b.modalidade === "S" ? 0 : 1;
+          if (modA !== modB) return modA - modB;
+          if (a.operacao !== b.operacao) return a.operacao.localeCompare(b.operacao);
+          return a.ticker.localeCompare(b.ticker);
+        });
+
+        let custosAcumulados = 0.0;
+        const consolidadosAtivos = itensConsolidados.map((item, idx) => {
+          const tipoAtivo = classificarTipoAtivo(item.ticker, item.espec);
+          let custoItem = 0.0;
+          if (volTotal > 0 && totalCustosNota > 0) {
+            if (idx === itensConsolidados.length - 1) {
+              custoItem = Number((totalCustosNota - custosAcumulados).toFixed(2));
+            } else {
+              custoItem = Number((totalCustosNota * (item.valor_total / volTotal)).toFixed(2));
+              custosAcumulados += custoItem;
+            }
+          }
+          return {
+            operacao: item.operacao,
+            ativo: item.ticker,
+            data: nota.data_pregao,
+            tipo: tipoAtivo,
+            qtd: item.qtd,
+            preco_medio: item.preco_medio,
+            modalidade: item.modalidade,
+            custos: custoItem
+          };
+        });
+
+        resultados.push({
+          numero_nota: nota.numero_nota,
+          data_pregao: nota.data_pregao,
+          modalidades: [
+            {
+              modalidade: "Swing Trade",
+              qtd_ops: stOpsCount || "-",
+              total_compras: stComprasVal,
+              total_vendas: stVendasVal,
+              volume_total: stVolTotal,
+              resultado_bruto: null,
+              taxas_rateadas: stTaxas,
+              resultado_liquido: null
+            },
+            {
+              modalidade: "Day Trade",
+              qtd_ops: dtOpsCount || "-",
+              total_compras: dtComprasVal,
+              total_vendas: dtVendasVal,
+              volume_total: dtVolTotal,
+              resultado_bruto: dtResBruto,
+              taxas_rateadas: dtTaxas,
+              resultado_liquido: dtResLiq
+            }
+          ],
+          ativos: consolidadosAtivos
+        });
+      }
+
+      return resultados;
+    }
+
+    // ==========================================
+    // 4. GERENCIAMENTO DE INTERFACE E EXPORTAÇÃO
+    // ==========================================
+    let dadosProcessados = null;
+
+    const dropZone = document.getElementById("drop-zone");
+    const fileInput = document.getElementById("file-input");
+    const loading = document.getElementById("loading");
+    const results = document.getElementById("results");
+    const errorBox = document.getElementById("error-box");
+
+    ['dragenter', 'dragover'].forEach(name => {
+      dropZone.addEventListener(name, (e) => {
+        e.preventDefault();
+        dropZone.classList.add('dragover');
+      });
+    });
+
+    ['dragleave', 'drop'].forEach(name => {
+      dropZone.addEventListener(name, (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('dragover');
+      });
+    });
+
+    dropZone.addEventListener('drop', (e) => {
+      const files = e.dataTransfer.files;
+      if (files.length > 0) {
+        processarArquivos(files);
+      }
+    });
+
+    function handleFileSelect(event) {
+      const files = event.target.files;
+      if (files.length > 0) {
+        processarArquivos(files);
+      }
+    }
+
+    async function processarArquivos(files) {
+      errorBox.style.display = "none";
+      loading.style.display = "block";
+      results.style.display = "none";
+
+      try {
+        let todasNotas = [];
+        for (let i = 0; i < files.length; i++) {
+          const file = files[i];
+          if (!file.name.toLowerCase().endsWith(".pdf")) continue;
+          document.getElementById("loading-text").innerText = `Lendo ${file.name}...`;
+          const arrayBuffer = await file.arrayBuffer();
+          const notas = await parsePdfArrayBuffer(arrayBuffer);
+          todasNotas = todasNotas.concat(notas);
+        }
+
+        if (todasNotas.length === 0 || todasNotas.every(n => n.operacoes.length === 0)) {
+          throw new Error("Nenhuma operação de compra ou venda reconhecida nas notas enviadas. Verifique se o PDF é uma nota de corretagem no padrão B3 / SINACOR.");
+        }
+
+        dadosProcessados = processarNotas(todasNotas);
+        renderizarTabelas(dadosProcessados);
+      } catch (err) {
+        console.error(err);
+        errorBox.innerText = `Erro ao processar: ${err.message}`;
+        errorBox.style.display = "block";
+      } finally {
+        loading.style.display = "none";
+      }
+    }
+
+    function renderizarTabelas(resultados) {
+      const modBody = document.querySelector("#modalidades-table tbody");
+      const atvBody = document.querySelector("#ativos-table tbody");
+      modBody.innerHTML = "";
+      atvBody.innerHTML = "";
+
+      resultados.forEach(res => {
+        res.modalidades.forEach(m => {
+          if (m.volume_total === 0 && m.qtd_ops === "-") return;
+          const tr = document.createElement("tr");
+          const resBruto = m.resultado_bruto !== null
+            ? `<span style="color:${m.resultado_bruto < 0 ? '#ef4444' : '#10b981'}; font-weight:600;">R$ ${formatPtBr(m.resultado_bruto)}</span>`
+            : "-";
+          const resLiq = m.resultado_liquido !== null
+            ? `<span style="color:${m.resultado_liquido < 0 ? '#ef4444' : '#10b981'}; font-weight:600;">R$ ${formatPtBr(m.resultado_liquido)}</span>`
+            : "-";
+
+          tr.innerHTML = `
+            <td><span class="badge ${m.modalidade === 'Day Trade' ? 'badge-day' : 'badge-swing'}">${m.modalidade}</span></td>
+            <td>${m.qtd_ops}</td>
+            <td>R$ ${formatPtBr(m.total_compras)}</td>
+            <td>R$ ${formatPtBr(m.total_vendas)}</td>
+            <td>R$ ${formatPtBr(m.volume_total)}</td>
+            <td>${resBruto}</td>
+            <td>R$ ${formatPtBr(m.taxas_rateadas)}</td>
+            <td>${resLiq}</td>
+          `;
+          modBody.appendChild(tr);
+        });
+
+        res.ativos.forEach(a => {
+          const tr = document.createElement("tr");
+          const opBadge = a.operacao === "C" ? "badge-compra" : "badge-venda";
+          const tipoBadge = a.tipo === "F" ? "badge-fii" : "badge-acao";
+          const modBadge = a.modalidade === "D" ? "badge-day" : "badge-swing";
+
+          tr.innerHTML = `
+            <td><strong>${a.ativo}</strong></td>
+            <td>${a.data}</td>
+            <td><span class="badge ${tipoBadge}">${a.tipo}</span></td>
+            <td>${a.qtd}</td>
+            <td>${formatPtBr(a.preco_medio, 4)}</td>
+            <td><span class="badge ${modBadge}">${a.modalidade}</span></td>
+            <td>${formatPtBr(a.custos, 2)}</td>
+            <td><span class="badge ${opBadge}">${a.operacao}</span></td>
+          `;
+          atvBody.appendChild(tr);
+        });
+      });
+
+      results.style.display = "block";
+    }
+
+    function downloadCSV() {
+      if (!dadosProcessados) return;
+
+      let csv = "\uFEFF"; // UTF-8 BOM para abertura perfeita no Excel / LibreOffice
+      csv += "=== RESUMO CONSOLIDADO POR MODALIDADE ===\n";
+      csv += "Modalidade;Qtd Operações;Total Compras (R$);Total Vendas (R$);Volume Total (R$);Resultado Bruto (R$);Taxas Rateadas (R$);Resultado Líquido (R$)\n";
+
+      dadosProcessados.forEach(res => {
+        res.modalidades.forEach(m => {
+          if (m.volume_total > 0 || m.qtd_ops !== "-") {
+            const resBrutoStr = m.resultado_bruto !== null ? m.resultado_bruto.toFixed(2).replace(".", ",") : "-";
+            const resLiqStr = m.resultado_liquido !== null ? m.resultado_liquido.toFixed(2).replace(".", ",") : "-";
+            csv += `${m.modalidade};${m.qtd_ops};${m.total_compras.toFixed(2).replace(".", ",")};${m.total_vendas.toFixed(2).replace(".", ",")};${m.volume_total.toFixed(2).replace(".", ",")};${resBrutoStr};${m.taxas_rateadas.toFixed(2).replace(".", ",")};${resLiqStr}\n`;
+          }
+        });
+      });
+
+      csv += "\n=== CONSOLIDADO POR ATIVO ===\n";
+      csv += "Ativo;Data;Tipo;Qtd;Preço Médio;Modalidade;Custos;Operação\n";
+
+      dadosProcessados.forEach(res => {
+        res.ativos.forEach(a => {
+          const pmStr = a.preco_medio.toFixed(4).replace(".", ",");
+          const custosStr = a.custos.toFixed(2).replace(".", ",");
+          csv += `${a.ativo};${a.data};${a.tipo};${a.qtd};${pmStr};${a.modalidade};${custosStr};${a.operacao}\n`;
+        });
+      });
+
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `nota_correta_consolidado_${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    }
+
+    function resetForm() {
+      fileInput.value = "";
+      results.style.display = "none";
+      dadosProcessados = null;
+    }
+  </script>
+</body>
+</html>
+
