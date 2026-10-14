@@ -167,6 +167,31 @@
     .badge-acao { background-color: rgba(168, 85, 247, 0.2); color: #c084fc; }
     .badge-swing { background-color: #334155; color: #cbd5e1; }
     .badge-day { background-color: rgba(245, 158, 11, 0.2); color: #fbbf24; }
+    .btn-copy {
+      padding: 0.3rem 0.65rem;
+      font-size: 0.75rem;
+      font-weight: 500;
+      border-radius: 6px;
+      background-color: #334155;
+      color: #f8fafc;
+      border: 1px solid #475569;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      transition: all 0.2s ease;
+      white-space: nowrap;
+    }
+    .btn-copy:hover {
+      background-color: var(--primary);
+      border-color: var(--primary);
+      color: white;
+    }
+    .btn-copy.copied {
+      background-color: #059669;
+      border-color: #10b981;
+      color: white;
+    }
     .loading {
       display: none;
       text-align: center;
@@ -269,6 +294,30 @@
           </thead>
           <tbody></tbody>
         </table>
+      </div>
+
+      <div id="secao-daytrade" style="display: none;">
+        <div class="section-title">⚡ Consolidado Day Trade</div>
+        <div class="table-container">
+          <table id="daytrade-table">
+            <thead>
+              <tr>
+                <th>Ativo</th>
+                <th>Data</th>
+                <th>Tipo</th>
+                <th>Qtd</th>
+                <th>PM Compra</th>
+                <th>PM Venda</th>
+                <th>Modalidade</th>
+                <th>Resultado Bruto</th>
+                <th>Custos</th>
+                <th>Resultado Líquido</th>
+                <th style="text-align: center;">Copiar</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
       </div>
 
       <div class="btn-group">
@@ -616,6 +665,7 @@
         }
 
         const itensConsolidados = [];
+        const dayTradesAtivos = [];
         let dtComprasVal = 0.0;
         let dtVendasVal = 0.0;
         let dtOpsCount = 0;
@@ -665,6 +715,20 @@
             });
             dtVendasVal += valVDt;
             dtOpsCount += compras.length + vendas.length;
+
+            const tipoAtivo = classificarTipoAtivo(ticker, especExemplo);
+            dayTradesAtivos.push({
+              ativo: ticker,
+              data: nota.data_pregao,
+              tipo: tipoAtivo,
+              qtd: qtdCasadaDt,
+              pm_compra: pmC,
+              pm_venda: pmV,
+              modalidade: "D",
+              val_c_dt: valCDt,
+              val_v_dt: valVDt,
+              resultado_bruto: Number((valVDt - valCDt).toFixed(2))
+            });
 
             if (qtdC > qtdCasadaDt) {
               const sobraC = qtdC - qtdCasadaDt;
@@ -783,6 +847,15 @@
           };
         });
 
+        for (const dtItem of dayTradesAtivos) {
+          const volItemDt = dtItem.val_c_dt + dtItem.val_v_dt;
+          const custosDt = (volTotal > 0 && totalCustosNota > 0)
+            ? Number((totalCustosNota * (volItemDt / volTotal)).toFixed(2))
+            : 0.0;
+          dtItem.custos = custosDt;
+          dtItem.resultado_liquido = Number((dtItem.resultado_bruto - custosDt).toFixed(2));
+        }
+
         resultados.push({
           numero_nota: nota.numero_nota,
           data_pregao: nota.data_pregao,
@@ -808,7 +881,8 @@
               resultado_liquido: dtResLiq
             }
           ],
-          ativos: consolidadosAtivos
+          ativos: consolidadosAtivos,
+          day_trades: dayTradesAtivos
         });
       }
 
@@ -885,11 +959,20 @@
       }
     }
 
+    let dadosDayTradeParaCopiar = [];
+
     function renderizarTabelas(resultados) {
       const modBody = document.querySelector("#modalidades-table tbody");
       const atvBody = document.querySelector("#ativos-table tbody");
+      const dtBody = document.querySelector("#daytrade-table tbody");
+      const secaoDayTrade = document.getElementById("secao-daytrade");
+
       modBody.innerHTML = "";
       atvBody.innerHTML = "";
+      dtBody.innerHTML = "";
+      dadosDayTradeParaCopiar = [];
+
+      let todosDayTrades = [];
 
       resultados.forEach(res => {
         res.modalidades.forEach(m => {
@@ -933,9 +1016,88 @@
           `;
           atvBody.appendChild(tr);
         });
+
+        if (res.day_trades && res.day_trades.length > 0) {
+          todosDayTrades = todosDayTrades.concat(res.day_trades);
+        }
       });
 
+      // Renderiza Consolidado Day Trade se houver operações
+      if (todosDayTrades.length > 0) {
+        secaoDayTrade.style.display = "block";
+        todosDayTrades.forEach(dt => {
+          const tr = document.createElement("tr");
+          const resBrutoStyle = dt.resultado_bruto < 0 ? 'color:#ef4444; font-weight:600;' : (dt.resultado_bruto > 0 ? 'color:#10b981; font-weight:600;' : 'font-weight:600;');
+          const resLiqStyle = dt.resultado_liquido < 0 ? 'color:#ef4444; font-weight:600;' : (dt.resultado_liquido > 0 ? 'color:#10b981; font-weight:600;' : 'font-weight:600;');
+          const tipoBadge = dt.tipo === "F" ? "badge-fii" : "badge-acao";
+
+          const linhaTexto = `${dt.ativo}\t${dt.data}\t${dt.tipo}\t${dt.qtd}\t${formatPtBr(dt.pm_compra, 4)}\t${formatPtBr(dt.pm_venda, 4)}\t${dt.modalidade}\t${formatPtBr(dt.resultado_bruto, 2)}\t${formatPtBr(dt.custos, 2)}\t${formatPtBr(dt.resultado_liquido, 2)}`;
+          dadosDayTradeParaCopiar.push(linhaTexto);
+          const idx = dadosDayTradeParaCopiar.length - 1;
+
+          tr.innerHTML = `
+            <td><strong>${dt.ativo}</strong></td>
+            <td>${dt.data}</td>
+            <td><span class="badge ${tipoBadge}">${dt.tipo}</span></td>
+            <td>${dt.qtd}</td>
+            <td>${formatPtBr(dt.pm_compra, 4)}</td>
+            <td>${formatPtBr(dt.pm_venda, 4)}</td>
+            <td><span class="badge badge-day">${dt.modalidade}</span></td>
+            <td><span style="${resBrutoStyle}">${formatPtBr(dt.resultado_bruto, 2)}</span></td>
+            <td>${formatPtBr(dt.custos, 2)}</td>
+            <td><span style="${resLiqStyle}">${formatPtBr(dt.resultado_liquido, 2)}</span></td>
+            <td style="text-align: center;">
+              <button type="button" class="btn-copy" onclick="copiarLinhaDayTrade(this, ${idx})">
+                📋 Copiar
+              </button>
+            </td>
+          `;
+          dtBody.appendChild(tr);
+        });
+      } else {
+        secaoDayTrade.style.display = "none";
+      }
+
       results.style.display = "block";
+    }
+
+    function copiarLinhaDayTrade(btn, idx) {
+      const texto = dadosDayTradeParaCopiar[idx];
+      if (!texto) return;
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(texto).then(() => {
+          mostrarFeedbackCopia(btn);
+        }).catch(() => fallbackCopiar(texto, btn));
+      } else {
+        fallbackCopiar(texto, btn);
+      }
+    }
+
+    function fallbackCopiar(texto, btn) {
+      const textarea = document.createElement("textarea");
+      textarea.value = texto;
+      textarea.style.position = "fixed";
+      textarea.style.left = "-9999px";
+      document.body.appendChild(textarea);
+      textarea.select();
+      try {
+        document.execCommand("copy");
+        mostrarFeedbackCopia(btn);
+      } catch (err) {
+        alert("Não foi possível copiar para a área de transferência.");
+      }
+      document.body.removeChild(textarea);
+    }
+
+    function mostrarFeedbackCopia(btn) {
+      const originalHtml = btn.innerHTML;
+      btn.innerHTML = "✅ Copiado!";
+      btn.classList.add("copied");
+      setTimeout(() => {
+        btn.innerHTML = originalHtml;
+        btn.classList.remove("copied");
+      }, 1800);
     }
 
     function downloadCSV() {
@@ -966,6 +1128,26 @@
         });
       });
 
+      let todosDayTrades = [];
+      dadosProcessados.forEach(res => {
+        if (res.day_trades && res.day_trades.length > 0) {
+          todosDayTrades = todosDayTrades.concat(res.day_trades);
+        }
+      });
+
+      if (todosDayTrades.length > 0) {
+        csv += "\n=== CONSOLIDADO DAY TRADE ===\n";
+        csv += "Ativo;Data;Tipo;Qtd;PM Compra;PM Venda;Modalidade;Resultado Bruto;Custos;Resultado Líquido\n";
+        todosDayTrades.forEach(dt => {
+          const pmCStr = dt.pm_compra.toFixed(4).replace(".", ",");
+          const pmVStr = dt.pm_venda.toFixed(4).replace(".", ",");
+          const resBrutoStr = dt.resultado_bruto.toFixed(2).replace(".", ",");
+          const custosStr = dt.custos.toFixed(2).replace(".", ",");
+          const resLiqStr = dt.resultado_liquido.toFixed(2).replace(".", ",");
+          csv += `${dt.ativo};${dt.data};${dt.tipo};${dt.qtd};${pmCStr};${pmVStr};${dt.modalidade};${resBrutoStr};${custosStr};${resLiqStr}\n`;
+        });
+      }
+
       const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
@@ -980,7 +1162,9 @@
     function resetForm() {
       fileInput.value = "";
       results.style.display = "none";
+      document.getElementById("secao-daytrade").style.display = "none";
       dadosProcessados = null;
+      dadosDayTradeParaCopiar = [];
     }
   </script>
 </body>
