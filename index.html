@@ -390,11 +390,12 @@
       return isNaN(num) ? 0.0 : num;
     }
 
-    function formatPtBr(num, decimals = 2) {
+    function formatPtBr(num, decimals = 3) {
       if (num === null || num === undefined) return "-";
+      const dec = Math.max(decimals, 3);
       return num.toLocaleString("pt-BR", {
-        minimumFractionDigits: decimals,
-        maximumFractionDigits: decimals
+        minimumFractionDigits: dec,
+        maximumFractionDigits: dec
       });
     }
 
@@ -674,144 +675,179 @@
         let stVendasVal = 0.0;
         let stOpsCount = 0;
 
+        function segregarOperacoes(ops, qtdCasada) {
+          // Prioriza operações marcadas com 'D' explícito, caso contrário mantém a ordem de execução da nota (FIFO)
+          const opsOrdenadas = [...ops].sort((a, b) => {
+            const isAD = a.observacao === "D" ? 0 : 1;
+            const isBD = b.observacao === "D" ? 0 : 1;
+            return isAD - isBD;
+          });
+
+          let needed = qtdCasada;
+          let dtVal = 0.0;
+          let dtQtd = 0;
+          let stVal = 0.0;
+          let stQtd = 0;
+
+          for (const op of opsOrdenadas) {
+            if (needed > 0) {
+              const take = Math.min(op.quantidade, needed);
+              const valTake = op.quantidade === take ? op.valor_total : (op.valor_total * (take / op.quantidade));
+              dtVal += valTake;
+              dtQtd += take;
+              needed -= take;
+
+              const leftover = op.quantidade - take;
+              if (leftover > 0) {
+                const valLeftover = op.valor_total - valTake;
+                stVal += valLeftover;
+                stQtd += leftover;
+              }
+            } else {
+              stVal += op.valor_total;
+              stQtd += op.quantidade;
+            }
+          }
+
+          const dtPm = dtQtd > 0 ? (dtVal / dtQtd) : 0.0;
+          const stPm = stQtd > 0 ? (stVal / stQtd) : 0.0;
+
+          return { dtQtd, dtVal, dtPm, stQtd, stVal, stPm };
+        }
+
         for (const [ticker, dic] of Object.entries(opsPorTicker)) {
           const compras = dic.C;
           const vendas = dic.V;
 
-          const qtdC = compras.reduce((acc, c) => acc + c.quantidade, 0);
-          const valC = compras.reduce((acc, c) => acc + c.valor_total, 0);
+          const totalQtdC = compras.reduce((acc, c) => acc + c.quantidade, 0);
+          const totalValC = compras.reduce((acc, c) => acc + c.valor_total, 0);
 
-          const qtdV = vendas.reduce((acc, v) => acc + v.quantidade, 0);
-          const valV = vendas.reduce((acc, v) => acc + v.valor_total, 0);
-
-          const pmC = qtdC > 0 ? Number((valC / qtdC).toFixed(4)) : 0.0;
-          const pmV = qtdV > 0 ? Number((valV / qtdV).toFixed(4)) : 0.0;
+          const totalQtdV = vendas.reduce((acc, v) => acc + v.quantidade, 0);
+          const totalValV = vendas.reduce((acc, v) => acc + v.valor_total, 0);
 
           const especExemplo = compras.length > 0 ? compras[0].especificacao_titulo : (vendas.length > 0 ? vendas[0].especificacao_titulo : "");
 
-          if (qtdC > 0 && qtdV > 0) {
-            const qtdCasadaDt = Math.min(qtdC, qtdV);
-            const valCDt = Number((pmC * qtdCasadaDt).toFixed(2));
+          if (totalQtdC > 0 && totalQtdV > 0) {
+            const qtdCasadaDt = Math.min(totalQtdC, totalQtdV);
+            const segC = segregarOperacoes(compras, qtdCasadaDt);
+            const segV = segregarOperacoes(vendas, qtdCasadaDt);
+
+            // 1. Parcela de Compra no Day Trade
             itensConsolidados.push({
               ticker,
               operacao: "C",
               modalidade: "D",
-              qtd: qtdCasadaDt,
-              preco_medio: pmC,
-              valor_total: valCDt,
+              qtd: segC.dtQtd,
+              preco_medio: segC.dtPm,
+              valor_total: segC.dtVal,
               espec: especExemplo
             });
-            dtComprasVal += valCDt;
+            dtComprasVal += segC.dtVal;
 
-            const valVDt = Number((pmV * qtdCasadaDt).toFixed(2));
+            // 2. Parcela de Venda no Day Trade
             itensConsolidados.push({
               ticker,
               operacao: "V",
               modalidade: "D",
-              qtd: qtdCasadaDt,
-              preco_medio: pmV,
-              valor_total: valVDt,
+              qtd: segV.dtQtd,
+              preco_medio: segV.dtPm,
+              valor_total: segV.dtVal,
               espec: especExemplo
             });
-            dtVendasVal += valVDt;
+            dtVendasVal += segV.dtVal;
             dtOpsCount += compras.length + vendas.length;
 
+            // 3. Registro para tabela Consolidado Day Trade
             const tipoAtivo = classificarTipoAtivo(ticker, especExemplo);
             dayTradesAtivos.push({
               ativo: ticker,
               data: nota.data_pregao,
               tipo: tipoAtivo,
               qtd: qtdCasadaDt,
-              pm_compra: pmC,
-              pm_venda: pmV,
+              pm_compra: segC.dtPm,
+              pm_venda: segV.dtPm,
               modalidade: "D",
-              val_c_dt: valCDt,
-              val_v_dt: valVDt,
-              resultado_bruto: Number((valVDt - valCDt).toFixed(2))
+              val_c_dt: segC.dtVal,
+              val_v_dt: segV.dtVal,
+              resultado_bruto: segV.dtVal - segC.dtVal
             });
 
-            if (qtdC > qtdCasadaDt) {
-              const sobraC = qtdC - qtdCasadaDt;
-              const valCSt = Number((valC - valCDt).toFixed(2));
+            // 4. Sobra de Compra para Swing Trade (se comprou mais do que vendeu)
+            if (segC.stQtd > 0) {
               itensConsolidados.push({
                 ticker,
                 operacao: "C",
                 modalidade: "S",
-                qtd: sobraC,
-                preco_medio: pmC,
-                valor_total: valCSt,
+                qtd: segC.stQtd,
+                preco_medio: segC.stPm,
+                valor_total: segC.stVal,
                 espec: especExemplo
               });
-              stComprasVal += valCSt;
+              stComprasVal += segC.stVal;
               stOpsCount += 1;
             }
 
-            if (qtdV > qtdCasadaDt) {
-              const sobraV = qtdV - qtdCasadaDt;
-              const valVSt = Number((valV - valVDt).toFixed(2));
+            // 5. Sobra de Venda para Swing Trade (se vendeu mais do que comprou)
+            if (segV.stQtd > 0) {
               itensConsolidados.push({
                 ticker,
                 operacao: "V",
                 modalidade: "S",
-                qtd: sobraV,
-                preco_medio: pmV,
-                valor_total: valVSt,
+                qtd: segV.stQtd,
+                preco_medio: segV.stPm,
+                valor_total: segV.stVal,
                 espec: especExemplo
               });
-              stVendasVal += valVSt;
+              stVendasVal += segV.stVal;
               stOpsCount += 1;
             }
-          } else if (qtdC > 0) {
+          } else if (totalQtdC > 0) {
+            const pmC = totalValC / totalQtdC;
             itensConsolidados.push({
               ticker,
               operacao: "C",
               modalidade: "S",
-              qtd: qtdC,
+              qtd: totalQtdC,
               preco_medio: pmC,
-              valor_total: Number(valC.toFixed(2)),
+              valor_total: totalValC,
               espec: especExemplo
             });
-            stComprasVal += valC;
+            stComprasVal += totalValC;
             stOpsCount += compras.length;
-          } else if (qtdV > 0) {
+          } else if (totalQtdV > 0) {
+            const pmV = totalValV / totalQtdV;
             itensConsolidados.push({
               ticker,
               operacao: "V",
               modalidade: "S",
-              qtd: qtdV,
+              qtd: totalQtdV,
               preco_medio: pmV,
-              valor_total: Number(valV.toFixed(2)),
+              valor_total: totalValV,
               espec: especExemplo
             });
-            stVendasVal += valV;
+            stVendasVal += totalValV;
             stOpsCount += vendas.length;
           }
         }
 
-        dtComprasVal = Number(dtComprasVal.toFixed(2));
-        dtVendasVal = Number(dtVendasVal.toFixed(2));
-        const dtVolTotal = Number((dtComprasVal + dtVendasVal).toFixed(2));
-
-        stComprasVal = Number(stComprasVal.toFixed(2));
-        stVendasVal = Number(stVendasVal.toFixed(2));
-        const stVolTotal = Number((stComprasVal + stVendasVal).toFixed(2));
-
-        const volTotal = Number((dtVolTotal + stVolTotal).toFixed(2));
+        const dtVolTotal = dtComprasVal + dtVendasVal;
+        const stVolTotal = stComprasVal + stVendasVal;
+        const volTotal = dtVolTotal + stVolTotal;
         const totalCustosNota = nota.custos.total_custos || 0.0;
 
         let dtTaxas = 0.0;
         let stTaxas = 0.0;
 
         if (volTotal > 0 && totalCustosNota > 0) {
-          dtTaxas = Number((totalCustosNota * (dtVolTotal / volTotal)).toFixed(2));
-          stTaxas = Number((totalCustosNota - dtTaxas).toFixed(2));
+          dtTaxas = totalCustosNota * (dtVolTotal / volTotal);
+          stTaxas = totalCustosNota - dtTaxas;
         }
 
         let dtResBruto = null;
         let dtResLiq = null;
         if (dtVolTotal > 0) {
-          dtResBruto = Number((dtVendasVal - dtComprasVal).toFixed(2));
-          dtResLiq = Number((dtResBruto - dtTaxas).toFixed(2));
+          dtResBruto = dtVendasVal - dtComprasVal;
+          dtResLiq = dtResBruto - dtTaxas;
         }
 
         // Ordenação: Swing Trade primeiro (C depois V), Day Trade depois (C depois V)
@@ -829,9 +865,9 @@
           let custoItem = 0.0;
           if (volTotal > 0 && totalCustosNota > 0) {
             if (idx === itensConsolidados.length - 1) {
-              custoItem = Number((totalCustosNota - custosAcumulados).toFixed(2));
+              custoItem = totalCustosNota - custosAcumulados;
             } else {
-              custoItem = Number((totalCustosNota * (item.valor_total / volTotal)).toFixed(2));
+              custoItem = totalCustosNota * (item.valor_total / volTotal);
               custosAcumulados += custoItem;
             }
           }
@@ -850,10 +886,10 @@
         for (const dtItem of dayTradesAtivos) {
           const volItemDt = dtItem.val_c_dt + dtItem.val_v_dt;
           const custosDt = (volTotal > 0 && totalCustosNota > 0)
-            ? Number((totalCustosNota * (volItemDt / volTotal)).toFixed(2))
+            ? (totalCustosNota * (volItemDt / volTotal))
             : 0.0;
           dtItem.custos = custosDt;
-          dtItem.resultado_liquido = Number((dtItem.resultado_bruto - custosDt).toFixed(2));
+          dtItem.resultado_liquido = dtItem.resultado_bruto - custosDt;
         }
 
         resultados.push({
@@ -1011,7 +1047,7 @@
             <td>${a.qtd}</td>
             <td>${formatPtBr(a.preco_medio, 4)}</td>
             <td><span class="badge ${modBadge}">${a.modalidade}</span></td>
-            <td>${formatPtBr(a.custos, 2)}</td>
+            <td>${formatPtBr(a.custos, 3)}</td>
             <td><span class="badge ${opBadge}">${a.operacao}</span></td>
           `;
           atvBody.appendChild(tr);
@@ -1031,7 +1067,7 @@
           const resLiqStyle = dt.resultado_liquido < 0 ? 'color:#ef4444; font-weight:600;' : (dt.resultado_liquido > 0 ? 'color:#10b981; font-weight:600;' : 'font-weight:600;');
           const tipoBadge = dt.tipo === "F" ? "badge-fii" : "badge-acao";
 
-          const linhaTexto = `${dt.ativo}\t${dt.data}\t${dt.tipo}\t${dt.qtd}\t${formatPtBr(dt.pm_compra, 4)}\t${formatPtBr(dt.pm_venda, 4)}\t${dt.modalidade}\t${formatPtBr(dt.resultado_bruto, 2)}\t${formatPtBr(dt.custos, 2)}\t${formatPtBr(dt.resultado_liquido, 2)}`;
+          const linhaTexto = `${dt.ativo}\t${dt.data}\t${dt.tipo}\t${dt.qtd}\t${formatPtBr(dt.pm_compra, 4)}\t${formatPtBr(dt.pm_venda, 4)}\t${dt.modalidade}\t${formatPtBr(dt.resultado_bruto, 3)}\t${formatPtBr(dt.custos, 3)}\t${formatPtBr(dt.resultado_liquido, 3)}`;
           dadosDayTradeParaCopiar.push(linhaTexto);
           const idx = dadosDayTradeParaCopiar.length - 1;
 
@@ -1043,9 +1079,9 @@
             <td>${formatPtBr(dt.pm_compra, 4)}</td>
             <td>${formatPtBr(dt.pm_venda, 4)}</td>
             <td><span class="badge badge-day">${dt.modalidade}</span></td>
-            <td><span style="${resBrutoStyle}">${formatPtBr(dt.resultado_bruto, 2)}</span></td>
-            <td>${formatPtBr(dt.custos, 2)}</td>
-            <td><span style="${resLiqStyle}">${formatPtBr(dt.resultado_liquido, 2)}</span></td>
+            <td><span style="${resBrutoStyle}">${formatPtBr(dt.resultado_bruto, 3)}</span></td>
+            <td>${formatPtBr(dt.custos, 3)}</td>
+            <td><span style="${resLiqStyle}">${formatPtBr(dt.resultado_liquido, 3)}</span></td>
             <td style="text-align: center;">
               <button type="button" class="btn-copy" onclick="copiarLinhaDayTrade(this, ${idx})">
                 📋 Copiar
@@ -1110,9 +1146,9 @@
       dadosProcessados.forEach(res => {
         res.modalidades.forEach(m => {
           if (m.volume_total > 0 || m.qtd_ops !== "-") {
-            const resBrutoStr = m.resultado_bruto !== null ? m.resultado_bruto.toFixed(2).replace(".", ",") : "-";
-            const resLiqStr = m.resultado_liquido !== null ? m.resultado_liquido.toFixed(2).replace(".", ",") : "-";
-            csv += `${m.modalidade};${m.qtd_ops};${m.total_compras.toFixed(2).replace(".", ",")};${m.total_vendas.toFixed(2).replace(".", ",")};${m.volume_total.toFixed(2).replace(".", ",")};${resBrutoStr};${m.taxas_rateadas.toFixed(2).replace(".", ",")};${resLiqStr}\n`;
+            const resBrutoStr = m.resultado_bruto !== null ? m.resultado_bruto.toFixed(3).replace(".", ",") : "-";
+            const resLiqStr = m.resultado_liquido !== null ? m.resultado_liquido.toFixed(3).replace(".", ",") : "-";
+            csv += `${m.modalidade};${m.qtd_ops};${m.total_compras.toFixed(3).replace(".", ",")};${m.total_vendas.toFixed(3).replace(".", ",")};${m.volume_total.toFixed(3).replace(".", ",")};${resBrutoStr};${m.taxas_rateadas.toFixed(3).replace(".", ",")};${resLiqStr}\n`;
           }
         });
       });
@@ -1123,7 +1159,7 @@
       dadosProcessados.forEach(res => {
         res.ativos.forEach(a => {
           const pmStr = a.preco_medio.toFixed(4).replace(".", ",");
-          const custosStr = a.custos.toFixed(2).replace(".", ",");
+          const custosStr = a.custos.toFixed(3).replace(".", ",");
           csv += `${a.ativo};${a.data};${a.tipo};${a.qtd};${pmStr};${a.modalidade};${custosStr};${a.operacao}\n`;
         });
       });
@@ -1141,9 +1177,9 @@
         todosDayTrades.forEach(dt => {
           const pmCStr = dt.pm_compra.toFixed(4).replace(".", ",");
           const pmVStr = dt.pm_venda.toFixed(4).replace(".", ",");
-          const resBrutoStr = dt.resultado_bruto.toFixed(2).replace(".", ",");
-          const custosStr = dt.custos.toFixed(2).replace(".", ",");
-          const resLiqStr = dt.resultado_liquido.toFixed(2).replace(".", ",");
+          const resBrutoStr = dt.resultado_bruto.toFixed(3).replace(".", ",");
+          const custosStr = dt.custos.toFixed(3).replace(".", ",");
+          const resLiqStr = dt.resultado_liquido.toFixed(3).replace(".", ",");
           csv += `${dt.ativo};${dt.data};${dt.tipo};${dt.qtd};${pmCStr};${pmVStr};${dt.modalidade};${resBrutoStr};${custosStr};${resLiqStr}\n`;
         });
       }
