@@ -13,15 +13,17 @@ Extrator e consolidador portátil de notas de corretagem (padrão B3 / SINACOR -
 - **Segregação Day Trade vs Swing Trade (Regra RFB):**
   - Identifica compras e vendas do mesmo ativo no mesmo dia (Day Trade).
   - Trata sobras parciais e operações puras como Swing Trade.
-  - Rateia as taxas da B3 proporcionalmente ao volume financeiro.
-- **Resumo Consolidado com Resultado:**
-  - Tabela com `Total Compras`, `Total Vendas`, `Volume Total`, `Resultado Bruto`, `Taxas Rateadas` e `Resultado Líquido` (Day Trade).
+  - Rateia as taxas da B3 proporcionalmente ao volume financeiro com precisão de 4 casas decimais.
+- **Conferência da Nota Original:**
+  - Painel com o resumo financeiro extraído diretamente da nota (Compras à vista, Vendas à vista, Líquido das Operações, Total de Custos & Taxas, IRRF retido e Líquido final da nota) para validação direta e sem divergências.
+- **Resumo Consolidado com Totais:**
+  - Tabela com `Total Compras`, `Total Vendas`, `Volume Total`, `Resultado Bruto`, `Taxas Rateadas` e `Resultado Líquido` (Day Trade), incluindo linha de **Total Geral**.
 - **Consolidado por Ativo:**
-  - Colunas: `Ativo`, `Data`, `Tipo` (`A` para Ações, `F` para FIIs), `Qtd`, `Preço Médio` (4 casas decimais), `Modalidade` (`D` ou `S`), `Custos` e `Operação` (`C` ou `V`).
+  - Colunas: `Ativo`, `Data`, `Tipo` (`A` para Ações, `F` para FIIs), `Qtd`, `Preço Médio` (4 casas decimais), `Modalidade` (`D` ou `S`), `Custos` (4 casas decimais) e `Operação` (`C` ou `V`).
 - **Consolidado Day Trade:**
-  - Agrupa os Day Trades de cada ativo no dia com colunas: `Ativo`, `Data`, `Tipo` (`A` ou `F`), `Qtd`, `PM Compra`, `PM Venda`, `Modalidade`, `Resultado Bruto`, `Custos` (soma compra + venda), `Resultado Líquido` e botão `📋 Copiar` para a área de transferência.
+  - Agrupa os Day Trades de cada ativo no dia com colunas a 4 casas decimais: `Ativo`, `Data`, `Tipo` (`A` ou `F`), `Qtd`, `PM Compra`, `PM Venda`, `Modalidade`, `Resultado Bruto`, `Custos` (soma compra + venda), `Resultado Líquido`, linha de **Totais** e botão `📋 Copiar` para a área de transferência.
 - **Exportação para CSV:**
-  - Gera arquivo `.csv` formatado com `;` e `UTF-8 com BOM` para abertura imediata no Microsoft Excel e LibreOffice Calc.
+  - Gera arquivo `.csv` formatado com `;`, 4 casas decimais e `UTF-8 com BOM` para abertura imediata no Microsoft Excel e LibreOffice Calc.
 
 ---
 

@@ -154,6 +154,42 @@
     }
     tr:last-child td { border-bottom: none; }
     tr:hover td { background-color: rgba(255, 255, 255, 0.02); }
+    tfoot tr {
+      background-color: #0f172a;
+      font-weight: 700;
+      border-top: 2px solid var(--card-border);
+    }
+    tfoot td {
+      border-bottom: none;
+      color: #f8fafc;
+      font-weight: 700;
+    }
+    .conferencia-card {
+      background-color: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      padding: 1.25rem;
+      margin-bottom: 1.5rem;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 1rem;
+    }
+    .conferencia-item {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+    .conferencia-label {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .conferencia-val {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: #f8fafc;
+    }
     .badge {
       display: inline-block;
       padding: 0.2rem 0.5rem;
@@ -258,6 +294,11 @@
         <button class="btn" onclick="downloadCSV()">⬇ Baixar Relatório em CSV</button>
       </div>
 
+      <div id="secao-conferencia" style="display: none;">
+        <div class="section-title">📋 Conferência com a Nota Original (Resumo Financeiro)</div>
+        <div class="conferencia-card" id="conferencia-conteudo"></div>
+      </div>
+
       <div class="section-title">📊 Resumo Consolidado por Modalidade</div>
       <div class="table-container">
         <table id="modalidades-table">
@@ -274,6 +315,7 @@
             </tr>
           </thead>
           <tbody></tbody>
+          <tfoot></tfoot>
         </table>
       </div>
 
@@ -316,6 +358,7 @@
               </tr>
             </thead>
             <tbody></tbody>
+            <tfoot></tfoot>
           </table>
         </div>
       </div>
@@ -390,9 +433,9 @@
       return isNaN(num) ? 0.0 : num;
     }
 
-    function formatPtBr(num, decimals = 3) {
+    function formatPtBr(num, decimals = 4) {
       if (num === null || num === undefined) return "-";
-      const dec = Math.max(decimals, 3);
+      const dec = Math.max(decimals, 4);
       return num.toLocaleString("pt-BR", {
         minimumFractionDigits: dec,
         maximumFractionDigits: dec
@@ -469,7 +512,7 @@
     // 2. PARSER DE NOTAS DE CORRETAGEM (SINACOR)
     // ==========================================
     const OPERACAO_REGEX = /^(?:(\d+)\s+)?((?:\d\s*-\s*)?BOVESPA|Bovespa)\s+([CV])\s+(VISTA|VIS|FRACIONARIO|FRACION[AÁ]RIO|FRA|OPCAO|OP[CÇ][AÃ]O[^\d]*?|TERMO|LEILAO)\s+(.+)$/i;
-    const VALORES_FINAIS_REGEX = /^(.*?)\s+(?:([DAH\*#2])\s+)?(\d[\d\.]*)\s+(\d[\d\.]*,\d{2,4})\s+(\d[\d\.]*,\d{2})\s+([DC])$/i;
+    const VALORES_FINAIS_REGEX = /^(.*?)\s+(?:([DAH\*#2TPX8](?:\s*[DAH\*#2TPX8])?)\s+)?(\d[\d\.]*)\s+(\d[\d\.]*,\d{2,4})\s+(\d[\d\.]*,\d{2})\s+([DC])$/i;
 
     function extrairLinhasPagina(textContent) {
       const items = textContent.items;
@@ -527,9 +570,32 @@
         }
       }
 
-      const totalMatch = textoCompleto.match(/Total\s*(?:Custos|Despesas|Custos\s*\/\s*Despesas)[:\s]*(?:R\$\s*)?([\d\.]+,\d{2})/i);
+      const totalMatch = textoCompleto.match(/Total\s*(?:Custos|Despesas|Custos\s*\/\s*Despesas|CBLC\s*\+\s*Bolsa)[:\s]*(?:R\$\s*)?([\d\.]+,\d{2})/i);
       if (totalMatch) {
         custosObj.total_custos = parsePtBrFloat(totalMatch[1]);
+      }
+
+      // Resumo financeiro e de liquidação da nota
+      const valOpMatch = textoCompleto.match(/Valor\s*l[ií]quido\s*das\s*opera[cç][oõ]es[:\s]*(?:R\$\s*)?([\d\.]+,\d{2})\s*([DC])?/i);
+      if (valOpMatch) {
+        custosObj.valor_liquido_operacoes = parsePtBrFloat(valOpMatch[1]);
+        if (valOpMatch[2]) custosObj.valor_liquido_operacoes_dc = valOpMatch[2].toUpperCase();
+      }
+
+      const liqMatch = textoCompleto.match(/L[ií]quido\s*para\s*(?:\d{2}\/\d{2}\/\d{4})?[:\s]*(?:R\$\s*)?([\d\.]+,\d{2})\s*([DC])?/i);
+      if (liqMatch) {
+        custosObj.valor_liquido_nota = parsePtBrFloat(liqMatch[1]);
+        if (liqMatch[2]) custosObj.valor_liquido_nota_dc = liqMatch[2].toUpperCase();
+      }
+
+      const comprasMatch = textoCompleto.match(/Compras\s*(?:[aà]\s*vista)?[:\s]*(?:R\$\s*)?([\d\.]+,\d{2})/i);
+      if (comprasMatch) {
+        custosObj.compras_a_vista = parsePtBrFloat(comprasMatch[1]);
+      }
+
+      const vendasMatch = textoCompleto.match(/Vendas\s*(?:[aà]\s*vista)?[:\s]*(?:R\$\s*)?([\d\.]+,\d{2})/i);
+      if (vendasMatch) {
+        custosObj.vendas_a_vista = parsePtBrFloat(vendasMatch[1]);
       }
 
       const somaTaxas = Number((
@@ -638,7 +704,7 @@
               preco_unitario: preco,
               valor_total: valor,
               debito_credito: dc,
-              is_day_trade: (obs === "D")
+              is_day_trade: (obs || "").toUpperCase().includes("D")
             });
           }
         }
@@ -678,8 +744,8 @@
         function segregarOperacoes(ops, qtdCasada) {
           // Prioriza operações marcadas com 'D' explícito, caso contrário mantém a ordem de execução da nota (FIFO)
           const opsOrdenadas = [...ops].sort((a, b) => {
-            const isAD = a.observacao === "D" ? 0 : 1;
-            const isBD = b.observacao === "D" ? 0 : 1;
+            const isAD = (a.observacao || "").toUpperCase().includes("D") ? 0 : 1;
+            const isBD = (b.observacao || "").toUpperCase().includes("D") ? 0 : 1;
             return isAD - isBD;
           });
 
@@ -883,18 +949,35 @@
           };
         });
 
-        for (const dtItem of dayTradesAtivos) {
+        let dtCustosAcum = 0.0;
+        dayTradesAtivos.forEach((dtItem, idx) => {
           const volItemDt = dtItem.val_c_dt + dtItem.val_v_dt;
-          const custosDt = (volTotal > 0 && totalCustosNota > 0)
-            ? (totalCustosNota * (volItemDt / volTotal))
-            : 0.0;
+          let custosDt = 0.0;
+          if (dtVolTotal > 0 && dtTaxas > 0) {
+            if (idx === dayTradesAtivos.length - 1) {
+              custosDt = dtTaxas - dtCustosAcum;
+            } else {
+              custosDt = dtTaxas * (volItemDt / dtVolTotal);
+              dtCustosAcum += custosDt;
+            }
+          }
           dtItem.custos = custosDt;
           dtItem.resultado_liquido = dtItem.resultado_bruto - custosDt;
-        }
+        });
 
         resultados.push({
           numero_nota: nota.numero_nota,
           data_pregao: nota.data_pregao,
+          resumo_financeiro: {
+            total_custos: totalCustosNota,
+            irrf: nota.custos.irrf || 0.0,
+            compras_a_vista: nota.custos.compras_a_vista !== undefined ? nota.custos.compras_a_vista : null,
+            vendas_a_vista: nota.custos.vendas_a_vista !== undefined ? nota.custos.vendas_a_vista : null,
+            valor_liquido_operacoes: nota.custos.valor_liquido_operacoes !== undefined ? nota.custos.valor_liquido_operacoes : null,
+            valor_liquido_operacoes_dc: nota.custos.valor_liquido_operacoes_dc || "",
+            valor_liquido_nota: nota.custos.valor_liquido_nota !== undefined ? nota.custos.valor_liquido_nota : null,
+            valor_liquido_nota_dc: nota.custos.valor_liquido_nota_dc || ""
+          },
           modalidades: [
             {
               modalidade: "Swing Trade",
@@ -999,36 +1082,116 @@
 
     function renderizarTabelas(resultados) {
       const modBody = document.querySelector("#modalidades-table tbody");
+      const modFoot = document.querySelector("#modalidades-table tfoot");
       const atvBody = document.querySelector("#ativos-table tbody");
       const dtBody = document.querySelector("#daytrade-table tbody");
+      const dtFoot = document.querySelector("#daytrade-table tfoot");
       const secaoDayTrade = document.getElementById("secao-daytrade");
+      const secConf = document.getElementById("secao-conferencia");
+      const confBox = document.getElementById("conferencia-conteudo");
 
       modBody.innerHTML = "";
+      modFoot.innerHTML = "";
       atvBody.innerHTML = "";
       dtBody.innerHTML = "";
+      dtFoot.innerHTML = "";
+      confBox.innerHTML = "";
       dadosDayTradeParaCopiar = [];
 
       let todosDayTrades = [];
+      let temResumoFinanceiro = false;
+
+      // 1. Preenche Conferência da Nota se houver dados
+      resultados.forEach(res => {
+        const rf = res.resumo_financeiro;
+        if (!rf) return;
+        if (rf.compras_a_vista !== null || rf.vendas_a_vista !== null || rf.valor_liquido_nota !== null || rf.total_custos > 0) {
+          temResumoFinanceiro = true;
+          const comprasCalc = res.modalidades.reduce((a, m) => a + m.total_compras, 0);
+          const vendasCalc = res.modalidades.reduce((a, m) => a + m.total_vendas, 0);
+          const comprasNotaVal = rf.compras_a_vista !== null ? rf.compras_a_vista : comprasCalc;
+          const vendasNotaVal = rf.vendas_a_vista !== null ? rf.vendas_a_vista : vendasCalc;
+          const liqOpsVal = rf.valor_liquido_operacoes !== null ? rf.valor_liquido_operacoes : (vendasNotaVal - comprasNotaVal);
+          const liqOpsDc = rf.valor_liquido_operacoes_dc || (liqOpsVal >= 0 ? "C" : "D");
+
+          const cardHtml = `
+            <div class="conferencia-item">
+              <span class="conferencia-label">Compras à Vista</span>
+              <span class="conferencia-val">R$ ${formatPtBr(comprasNotaVal, 4)}</span>
+            </div>
+            <div class="conferencia-item">
+              <span class="conferencia-label">Vendas à Vista</span>
+              <span class="conferencia-val">R$ ${formatPtBr(vendasNotaVal, 4)}</span>
+            </div>
+            <div class="conferencia-item">
+              <span class="conferencia-label">Líquido das Operações</span>
+              <span class="conferencia-val">R$ ${formatPtBr(Math.abs(liqOpsVal), 4)} ${liqOpsDc}</span>
+            </div>
+            <div class="conferencia-item">
+              <span class="conferencia-label">Total Custos & Taxas</span>
+              <span class="conferencia-val">R$ ${formatPtBr(rf.total_custos, 4)} D</span>
+            </div>
+            <div class="conferencia-item">
+              <span class="conferencia-label">IRRF Retido na Fonte</span>
+              <span class="conferencia-val">${rf.irrf > 0 ? 'R$ ' + formatPtBr(rf.irrf, 4) + ' D' : 'R$ 0,0000'}</span>
+            </div>
+            <div class="conferencia-item">
+              <span class="conferencia-label">Líquido Final da Nota</span>
+              <span class="conferencia-val" style="color: ${rf.valor_liquido_nota_dc === 'C' ? '#10b981' : '#fca5a5'};">
+                ${rf.valor_liquido_nota !== null ? 'R$ ' + formatPtBr(rf.valor_liquido_nota, 4) + ' ' + (rf.valor_liquido_nota_dc || '') : '-'}
+              </span>
+            </div>
+            <div style="grid-column: 1 / -1; font-size: 0.8rem; color: var(--text-muted); padding-top: 0.5rem; border-top: 1px dashed var(--card-border); margin-top: 0.25rem;">
+              💡 <em>O <strong>Líquido Final da Nota</strong> representa o valor financeiro total debitado ou creditado na sua corretora (incluindo Swing Trade e IRRF). Já o <strong>Resultado Líquido Day Trade</strong> reflete exclusivamente o ganho/perda líquido das operações casadas.</em>
+            </div>
+          `;
+          confBox.innerHTML += cardHtml;
+        }
+      });
+      if (secConf) secConf.style.display = temResumoFinanceiro ? "block" : "none";
+
+      // 2. Tabela de Modalidades
+      let modTotOps = 0;
+      let modTotC = 0.0;
+      let modTotV = 0.0;
+      let modTotVol = 0.0;
+      let modTotResB = 0.0;
+      let modTotTaxas = 0.0;
+      let modTotResL = 0.0;
+      let temResBruto = false;
 
       resultados.forEach(res => {
         res.modalidades.forEach(m => {
           if (m.volume_total === 0 && m.qtd_ops === "-") return;
+          if (typeof m.qtd_ops === "number") modTotOps += m.qtd_ops;
+          modTotC += m.total_compras;
+          modTotV += m.total_vendas;
+          modTotVol += m.volume_total;
+          modTotTaxas += m.taxas_rateadas;
+          if (m.resultado_bruto !== null) {
+            modTotResB += m.resultado_bruto;
+            temResBruto = true;
+          }
+          if (m.resultado_liquido !== null) {
+            modTotResL += m.resultado_liquido;
+          }
+
           const tr = document.createElement("tr");
           const resBruto = m.resultado_bruto !== null
-            ? `<span style="color:${m.resultado_bruto < 0 ? '#ef4444' : '#10b981'}; font-weight:600;">R$ ${formatPtBr(m.resultado_bruto)}</span>`
+            ? `<span style="color:${m.resultado_bruto < 0 ? '#ef4444' : '#10b981'}; font-weight:600;">R$ ${formatPtBr(m.resultado_bruto, 4)}</span>`
             : "-";
           const resLiq = m.resultado_liquido !== null
-            ? `<span style="color:${m.resultado_liquido < 0 ? '#ef4444' : '#10b981'}; font-weight:600;">R$ ${formatPtBr(m.resultado_liquido)}</span>`
+            ? `<span style="color:${m.resultado_liquido < 0 ? '#ef4444' : '#10b981'}; font-weight:600;">R$ ${formatPtBr(m.resultado_liquido, 4)}</span>`
             : "-";
 
           tr.innerHTML = `
             <td><span class="badge ${m.modalidade === 'Day Trade' ? 'badge-day' : 'badge-swing'}">${m.modalidade}</span></td>
             <td>${m.qtd_ops}</td>
-            <td>R$ ${formatPtBr(m.total_compras)}</td>
-            <td>R$ ${formatPtBr(m.total_vendas)}</td>
-            <td>R$ ${formatPtBr(m.volume_total)}</td>
+            <td>R$ ${formatPtBr(m.total_compras, 4)}</td>
+            <td>R$ ${formatPtBr(m.total_vendas, 4)}</td>
+            <td>R$ ${formatPtBr(m.volume_total, 4)}</td>
             <td>${resBruto}</td>
-            <td>R$ ${formatPtBr(m.taxas_rateadas)}</td>
+            <td>R$ ${formatPtBr(m.taxas_rateadas, 4)}</td>
             <td>${resLiq}</td>
           `;
           modBody.appendChild(tr);
@@ -1047,7 +1210,7 @@
             <td>${a.qtd}</td>
             <td>${formatPtBr(a.preco_medio, 4)}</td>
             <td><span class="badge ${modBadge}">${a.modalidade}</span></td>
-            <td>${formatPtBr(a.custos, 3)}</td>
+            <td>${formatPtBr(a.custos, 4)}</td>
             <td><span class="badge ${opBadge}">${a.operacao}</span></td>
           `;
           atvBody.appendChild(tr);
@@ -1058,16 +1221,42 @@
         }
       });
 
+      // Totalizadores de Modalidades
+      const trFootMod = document.createElement("tr");
+      const resBStyle = modTotResB < 0 ? 'color:#ef4444;' : (modTotResB > 0 ? 'color:#10b981;' : '');
+      const resLStyle = modTotResL < 0 ? 'color:#ef4444;' : (modTotResL > 0 ? 'color:#10b981;' : '');
+      trFootMod.innerHTML = `
+        <td>Total Geral</td>
+        <td>${modTotOps || "-"}</td>
+        <td>R$ ${formatPtBr(modTotC, 4)}</td>
+        <td>R$ ${formatPtBr(modTotV, 4)}</td>
+        <td>R$ ${formatPtBr(modTotVol, 4)}</td>
+        <td>${temResBruto ? `<span style="${resBStyle}">R$ ${formatPtBr(modTotResB, 4)}</span>` : "-"}</td>
+        <td>R$ ${formatPtBr(modTotTaxas, 4)}</td>
+        <td>${temResBruto ? `<span style="${resLStyle}">R$ ${formatPtBr(modTotResL, 4)}</span>` : "-"}</td>
+      `;
+      modFoot.appendChild(trFootMod);
+
       // Renderiza Consolidado Day Trade se houver operações
       if (todosDayTrades.length > 0) {
         secaoDayTrade.style.display = "block";
+        let dtTotQtd = 0;
+        let dtTotResB = 0.0;
+        let dtTotCustos = 0.0;
+        let dtTotResL = 0.0;
+
         todosDayTrades.forEach(dt => {
+          dtTotQtd += dt.qtd;
+          dtTotResB += dt.resultado_bruto;
+          dtTotCustos += dt.custos;
+          dtTotResL += dt.resultado_liquido;
+
           const tr = document.createElement("tr");
           const resBrutoStyle = dt.resultado_bruto < 0 ? 'color:#ef4444; font-weight:600;' : (dt.resultado_bruto > 0 ? 'color:#10b981; font-weight:600;' : 'font-weight:600;');
           const resLiqStyle = dt.resultado_liquido < 0 ? 'color:#ef4444; font-weight:600;' : (dt.resultado_liquido > 0 ? 'color:#10b981; font-weight:600;' : 'font-weight:600;');
           const tipoBadge = dt.tipo === "F" ? "badge-fii" : "badge-acao";
 
-          const linhaTexto = `${dt.ativo}\t${dt.data}\t${dt.tipo}\t${dt.qtd}\t${formatPtBr(dt.pm_compra, 4)}\t${formatPtBr(dt.pm_venda, 4)}\t${dt.modalidade}\t${formatPtBr(dt.resultado_bruto, 3)}\t${formatPtBr(dt.custos, 3)}\t${formatPtBr(dt.resultado_liquido, 3)}`;
+          const linhaTexto = `${dt.ativo}\t${dt.data}\t${dt.tipo}\t${dt.qtd}\t${formatPtBr(dt.pm_compra, 4)}\t${formatPtBr(dt.pm_venda, 4)}\t${dt.modalidade}\t${formatPtBr(dt.resultado_bruto, 4)}\t${formatPtBr(dt.custos, 4)}\t${formatPtBr(dt.resultado_liquido, 4)}`;
           dadosDayTradeParaCopiar.push(linhaTexto);
           const idx = dadosDayTradeParaCopiar.length - 1;
 
@@ -1079,9 +1268,9 @@
             <td>${formatPtBr(dt.pm_compra, 4)}</td>
             <td>${formatPtBr(dt.pm_venda, 4)}</td>
             <td><span class="badge badge-day">${dt.modalidade}</span></td>
-            <td><span style="${resBrutoStyle}">${formatPtBr(dt.resultado_bruto, 3)}</span></td>
-            <td>${formatPtBr(dt.custos, 3)}</td>
-            <td><span style="${resLiqStyle}">${formatPtBr(dt.resultado_liquido, 3)}</span></td>
+            <td><span style="${resBrutoStyle}">${formatPtBr(dt.resultado_bruto, 4)}</span></td>
+            <td>${formatPtBr(dt.custos, 4)}</td>
+            <td><span style="${resLiqStyle}">${formatPtBr(dt.resultado_liquido, 4)}</span></td>
             <td style="text-align: center;">
               <button type="button" class="btn-copy" onclick="copiarLinhaDayTrade(this, ${idx})">
                 📋 Copiar
@@ -1090,6 +1279,24 @@
           `;
           dtBody.appendChild(tr);
         });
+
+        const trFootDt = document.createElement("tr");
+        const dtFootResBStyle = dtTotResB < 0 ? 'color:#ef4444;' : (dtTotResB > 0 ? 'color:#10b981;' : '');
+        const dtFootResLStyle = dtTotResL < 0 ? 'color:#ef4444;' : (dtTotResL > 0 ? 'color:#10b981;' : '');
+        trFootDt.innerHTML = `
+          <td>Total</td>
+          <td>-</td>
+          <td>-</td>
+          <td>${dtTotQtd}</td>
+          <td>-</td>
+          <td>-</td>
+          <td>-</td>
+          <td><span style="${dtFootResBStyle}">${formatPtBr(dtTotResB, 4)}</span></td>
+          <td>${formatPtBr(dtTotCustos, 4)}</td>
+          <td><span style="${dtFootResLStyle}">${formatPtBr(dtTotResL, 4)}</span></td>
+          <td></td>
+        `;
+        dtFoot.appendChild(trFootDt);
       } else {
         secaoDayTrade.style.display = "none";
       }
@@ -1146,9 +1353,9 @@
       dadosProcessados.forEach(res => {
         res.modalidades.forEach(m => {
           if (m.volume_total > 0 || m.qtd_ops !== "-") {
-            const resBrutoStr = m.resultado_bruto !== null ? m.resultado_bruto.toFixed(3).replace(".", ",") : "-";
-            const resLiqStr = m.resultado_liquido !== null ? m.resultado_liquido.toFixed(3).replace(".", ",") : "-";
-            csv += `${m.modalidade};${m.qtd_ops};${m.total_compras.toFixed(3).replace(".", ",")};${m.total_vendas.toFixed(3).replace(".", ",")};${m.volume_total.toFixed(3).replace(".", ",")};${resBrutoStr};${m.taxas_rateadas.toFixed(3).replace(".", ",")};${resLiqStr}\n`;
+            const resBrutoStr = m.resultado_bruto !== null ? m.resultado_bruto.toFixed(4).replace(".", ",") : "-";
+            const resLiqStr = m.resultado_liquido !== null ? m.resultado_liquido.toFixed(4).replace(".", ",") : "-";
+            csv += `${m.modalidade};${m.qtd_ops};${m.total_compras.toFixed(4).replace(".", ",")};${m.total_vendas.toFixed(4).replace(".", ",")};${m.volume_total.toFixed(4).replace(".", ",")};${resBrutoStr};${m.taxas_rateadas.toFixed(4).replace(".", ",")};${resLiqStr}\n`;
           }
         });
       });
@@ -1159,7 +1366,7 @@
       dadosProcessados.forEach(res => {
         res.ativos.forEach(a => {
           const pmStr = a.preco_medio.toFixed(4).replace(".", ",");
-          const custosStr = a.custos.toFixed(3).replace(".", ",");
+          const custosStr = a.custos.toFixed(4).replace(".", ",");
           csv += `${a.ativo};${a.data};${a.tipo};${a.qtd};${pmStr};${a.modalidade};${custosStr};${a.operacao}\n`;
         });
       });
@@ -1177,9 +1384,9 @@
         todosDayTrades.forEach(dt => {
           const pmCStr = dt.pm_compra.toFixed(4).replace(".", ",");
           const pmVStr = dt.pm_venda.toFixed(4).replace(".", ",");
-          const resBrutoStr = dt.resultado_bruto.toFixed(3).replace(".", ",");
-          const custosStr = dt.custos.toFixed(3).replace(".", ",");
-          const resLiqStr = dt.resultado_liquido.toFixed(3).replace(".", ",");
+          const resBrutoStr = dt.resultado_bruto.toFixed(4).replace(".", ",");
+          const custosStr = dt.custos.toFixed(4).replace(".", ",");
+          const resLiqStr = dt.resultado_liquido.toFixed(4).replace(".", ",");
           csv += `${dt.ativo};${dt.data};${dt.tipo};${dt.qtd};${pmCStr};${pmVStr};${dt.modalidade};${resBrutoStr};${custosStr};${resLiqStr}\n`;
         });
       }
@@ -1198,6 +1405,8 @@
     function resetForm() {
       fileInput.value = "";
       results.style.display = "none";
+      const secConf = document.getElementById("secao-conferencia");
+      if (secConf) secConf.style.display = "none";
       document.getElementById("secao-daytrade").style.display = "none";
       dadosProcessados = null;
       dadosDayTradeParaCopiar = [];
