@@ -558,7 +558,6 @@
         ["taxa_ana", /Taxa\s*A\.?N\.?A\.?[:\s]*(?:R\$\s*)?([\d\.]+,\d{2})/i],
         ["corretagem", /Corretagem(?:\s*\/\s*Despesas)?[:\s]*(?:R\$\s*)?([\d\.]+,\d{2})/i],
         ["iss", /ISS(?:\s*\/\s*Impostos)?[:\s]*(?:R\$\s*)?([\d\.]+,\d{2})/i],
-        ["irrf", /I\.?R\.?R\.?F\.?.*?[:\s]*(?:R\$\s*)?([\d\.]+,\d{2})/i],
         ["outras_bovespa", /Outras\s*(?:Bovespa)?[:\s]*(?:R\$\s*)?([\d\.]+,\d{2})/i]
       ];
 
@@ -568,6 +567,25 @@
           const val = parsePtBrFloat(m[1]);
           if (val > 0) custosObj[key] = val;
         }
+      }
+
+      // Extração robusta de IRRF (não confundir com a base de cálculo "base R$ ...")
+      const mIrrfBase = textoCompleto.match(/I\.?R\.?R\.?F\.?[\s\S]*?base[\s\S]*?[\d\.]+,\d{2}[\s\S]*?([\d\.]+,\d{2})\s*[DC]?/i);
+      const mIrrfDt = textoCompleto.match(/I\.?R\.?R\.?F\.?[\s\S]*?(?:day\s*[- ]?trade)[:\s]*(?:R\$\s*)?([\d\.]+,\d{2})/i);
+      const mIrrfSimples = textoCompleto.match(/I\.?R\.?R\.?F\.?.*?[:\s]*(?:R\$\s*)?([\d\.]+,\d{2})/i);
+
+      let irrfStr = null;
+      if (mIrrfBase) {
+        irrfStr = mIrrfBase[1];
+      } else if (mIrrfDt) {
+        irrfStr = mIrrfDt[1];
+      } else if (mIrrfSimples) {
+        irrfStr = mIrrfSimples[1];
+      }
+
+      if (irrfStr) {
+        const valIrrf = parsePtBrFloat(irrfStr);
+        if (valIrrf > 0) custosObj.irrf = valIrrf;
       }
 
       const totalMatch = textoCompleto.match(/Total\s*(?:Custos|Despesas|Custos\s*\/\s*Despesas|CBLC\s*\+\s*Bolsa)[:\s]*(?:R\$\s*)?([\d\.]+,\d{2})/i);
@@ -900,6 +918,7 @@
         const stVolTotal = stComprasVal + stVendasVal;
         const volTotal = dtVolTotal + stVolTotal;
         const totalCustosNota = nota.custos.total_custos || 0.0;
+        const irrfNota = nota.custos.irrf || 0.0;
 
         let dtTaxas = 0.0;
         let stTaxas = 0.0;
@@ -909,11 +928,14 @@
           stTaxas = totalCustosNota - dtTaxas;
         }
 
+        // Custos do Day Trade incluindo rateio de IRRF da nota para bater com o Líquido Final da nota
+        const dtCustosTotais = dtTaxas + irrfNota;
+
         let dtResBruto = null;
         let dtResLiq = null;
         if (dtVolTotal > 0) {
           dtResBruto = dtVendasVal - dtComprasVal;
-          dtResLiq = dtResBruto - dtTaxas;
+          dtResLiq = dtResBruto - dtCustosTotais;
         }
 
         // Ordenação: Swing Trade primeiro (C depois V), Day Trade depois (C depois V)
@@ -925,16 +947,33 @@
           return a.ticker.localeCompare(b.ticker);
         });
 
-        let custosAcumulados = 0.0;
-        const consolidadosAtivos = itensConsolidados.map((item, idx) => {
+        let stCustosAcum = 0.0;
+        let dtAtvCustosAcum = 0.0;
+        const itensST = itensConsolidados.filter(i => i.modalidade === "S");
+        const itensDT = itensConsolidados.filter(i => i.modalidade === "D");
+
+        const consolidadosAtivos = itensConsolidados.map((item) => {
           const tipoAtivo = classificarTipoAtivo(item.ticker, item.espec);
           let custoItem = 0.0;
-          if (volTotal > 0 && totalCustosNota > 0) {
-            if (idx === itensConsolidados.length - 1) {
-              custoItem = totalCustosNota - custosAcumulados;
-            } else {
-              custoItem = totalCustosNota * (item.valor_total / volTotal);
-              custosAcumulados += custoItem;
+          if (item.modalidade === "S") {
+            const idxST = itensST.indexOf(item);
+            if (stVolTotal > 0 && stTaxas > 0) {
+              if (idxST === itensST.length - 1) {
+                custoItem = stTaxas - stCustosAcum;
+              } else {
+                custoItem = stTaxas * (item.valor_total / stVolTotal);
+                stCustosAcum += custoItem;
+              }
+            }
+          } else {
+            const idxDT = itensDT.indexOf(item);
+            if (dtVolTotal > 0 && dtCustosTotais > 0) {
+              if (idxDT === itensDT.length - 1) {
+                custoItem = dtCustosTotais - dtAtvCustosAcum;
+              } else {
+                custoItem = dtCustosTotais * (item.valor_total / dtVolTotal);
+                dtAtvCustosAcum += custoItem;
+              }
             }
           }
           return {
@@ -953,11 +992,11 @@
         dayTradesAtivos.forEach((dtItem, idx) => {
           const volItemDt = dtItem.val_c_dt + dtItem.val_v_dt;
           let custosDt = 0.0;
-          if (dtVolTotal > 0 && dtTaxas > 0) {
+          if (dtVolTotal > 0 && dtCustosTotais > 0) {
             if (idx === dayTradesAtivos.length - 1) {
-              custosDt = dtTaxas - dtCustosAcum;
+              custosDt = dtCustosTotais - dtCustosAcum;
             } else {
-              custosDt = dtTaxas * (volItemDt / dtVolTotal);
+              custosDt = dtCustosTotais * (volItemDt / dtVolTotal);
               dtCustosAcum += custosDt;
             }
           }
@@ -970,7 +1009,7 @@
           data_pregao: nota.data_pregao,
           resumo_financeiro: {
             total_custos: totalCustosNota,
-            irrf: nota.custos.irrf || 0.0,
+            irrf: irrfNota,
             compras_a_vista: nota.custos.compras_a_vista !== undefined ? nota.custos.compras_a_vista : null,
             vendas_a_vista: nota.custos.vendas_a_vista !== undefined ? nota.custos.vendas_a_vista : null,
             valor_liquido_operacoes: nota.custos.valor_liquido_operacoes !== undefined ? nota.custos.valor_liquido_operacoes : null,
@@ -996,7 +1035,7 @@
               total_vendas: dtVendasVal,
               volume_total: dtVolTotal,
               resultado_bruto: dtResBruto,
-              taxas_rateadas: dtTaxas,
+              taxas_rateadas: dtCustosTotais,
               resultado_liquido: dtResLiq
             }
           ],
@@ -1142,7 +1181,7 @@
               </span>
             </div>
             <div style="grid-column: 1 / -1; font-size: 0.8rem; color: var(--text-muted); padding-top: 0.5rem; border-top: 1px dashed var(--card-border); margin-top: 0.25rem;">
-              💡 <em>O <strong>Líquido Final da Nota</strong> representa o valor financeiro total debitado ou creditado na sua corretora (incluindo Swing Trade e IRRF). Já o <strong>Resultado Líquido Day Trade</strong> reflete exclusivamente o ganho/perda líquido das operações casadas.</em>
+              💡 <em>O <strong>Líquido Final da Nota</strong> representa o valor financeiro movimentado na conta. Os custos do Day Trade agora incluem as taxas B3 e o rateio do IRRF retido, fazendo com que o <strong>Resultado Líquido do Day Trade</strong> bata com a liquidação da nota.</em>
             </div>
           `;
           confBox.innerHTML += cardHtml;

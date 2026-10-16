@@ -21,7 +21,7 @@ Extrator e consolidador portátil de notas de corretagem (padrão B3 / SINACOR -
 - **Consolidado por Ativo:**
   - Colunas: `Ativo`, `Data`, `Tipo` (`A` para Ações, `F` para FIIs), `Qtd`, `Preço Médio` (4 casas decimais), `Modalidade` (`D` ou `S`), `Custos` (4 casas decimais) e `Operação` (`C` ou `V`).
 - **Consolidado Day Trade:**
-  - Agrupa os Day Trades de cada ativo no dia com colunas a 4 casas decimais: `Ativo`, `Data`, `Tipo` (`A` ou `F`), `Qtd`, `PM Compra`, `PM Venda`, `Modalidade`, `Resultado Bruto`, `Custos` (soma compra + venda), `Resultado Líquido`, linha de **Totais** e botão `📋 Copiar` para a área de transferência.
+  - Agrupa os Day Trades de cada ativo no dia com colunas a 4 casas decimais: `Ativo`, `Data`, `Tipo` (`A` ou `F`), `Qtd`, `PM Compra`, `PM Venda`, `Modalidade`, `Resultado Bruto`, `Custos` (taxas B3 rateadas + IRRF retido), `Resultado Líquido`, linha de **Totais** (coincidindo com o valor líquido da nota) e botão `📋 Copiar` para a área de transferência.
 - **Exportação para CSV:**
   - Gera arquivo `.csv` formatado com `;`, 4 casas decimais e `UTF-8 com BOM` para abertura imediata no Microsoft Excel e LibreOffice Calc.
 
