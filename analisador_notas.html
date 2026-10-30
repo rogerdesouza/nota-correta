@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Analisador de Notas de Corretagem (SINACOR)</title>
+    <!-- Tailwind CSS para interface -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- PDF.js para leitura offline do PDF no navegador -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        /* Fundo base escuro */
+        body { background-color: #111827; color: #f3f4f6; }
+        /* Estado de Drag & Drop ativo */
+        .drag-active { border-color: #3b82f6 !important; background-color: #1f2937 !important; }
+        /* Scrollbar customizada para tema escuro */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #1f2937; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #6b7280; }
+    </style>
+</head>
+<body class="min-h-screen font-sans antialiased">
+
+    <div class="max-w-6xl mx-auto px-4 py-8">
+        <header class="mb-8 text-center">
+            <h1 class="text-3xl font-bold text-white mb-2">Analisador SINACOR (Offline)</h1>
+            <p class="text-gray-400">Arraste a sua nota em PDF. O processamento é local e seguro (Dark Mode).</p>
+        </header>
+
+        <!-- Área de Upload (Drag & Drop) -->
+        <div class="bg-gray-800 rounded-xl shadow-lg p-8 mb-8 border border-gray-700">
+            <div id="dropZone" class="border-2 border-dashed border-gray-600 rounded-lg p-10 text-center transition-colors duration-200 cursor-pointer hover:bg-gray-700">
+                <input type="file" id="fileInput" class="hidden" accept="application/pdf" multiple>
+                <div class="space-y-4">
+                    <i class="fas fa-file-pdf text-5xl text-blue-500"></i>
+                    <div>
+                        <p class="text-lg font-medium text-white">Arraste seus PDFs aqui ou clique para selecionar</p>
+                        <p class="text-sm text-gray-400 mt-1">Suporta múltiplas notas simultaneamente (SINACOR)</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="loading" class="hidden mt-6 text-center">
+                <i class="fas fa-circle-notch fa-spin text-3xl text-blue-500"></i>
+                <p class="mt-2 text-gray-300 font-medium">Extraindo dados e calculando médias...</p>
+            </div>
+        </div>
+
+        <!-- Tabela de Resultados -->
+        <div id="resultsContainer" class="hidden space-y-8">
+            <!-- Cards de Resumo Financeiro -->
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div class="bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-700 border-l-4 border-l-blue-500">
+                    <p class="text-sm text-gray-400 font-medium">Volume Total</p>
+                    <p class="text-2xl font-bold text-white" id="resVolumeTotal">R$ 0,00</p>
+                </div>
+                <div class="bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-700 border-l-4 border-l-green-500">
+                    <p class="text-sm text-gray-400 font-medium">Total Compras</p>
+                    <p class="text-2xl font-bold text-white" id="resTotalCompras">R$ 0,00</p>
+                </div>
+                <div class="bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-700 border-l-4 border-l-purple-500">
+                    <p class="text-sm text-gray-400 font-medium">Total Vendas</p>
+                    <p class="text-2xl font-bold text-white" id="resTotalVendas">R$ 0,00</p>
+                </div>
+                <div class="bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-700 border-l-4 border-l-red-500">
+                    <p class="text-sm text-gray-400 font-medium">Taxas B3 Alocadas</p>
+                    <p class="text-2xl font-bold text-white" id="resTotalTaxas">R$ 0,00</p>
+                </div>
+            </div>
+
+            <!-- Área da Tabela com Barra de Pesquisa -->
+            <div class="bg-gray-800 rounded-xl shadow-lg border border-gray-700 overflow-hidden">
+                <div class="p-6 border-b border-gray-700 flex flex-col md:flex-row justify-between items-center gap-4">
+                    <h2 class="text-xl font-bold text-white">Preço Médio por Ativo</h2>
+                    
+                    <!-- Campo de Pesquisa -->
+                    <div class="relative w-full md:w-72">
+                        <div class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+                            <i class="fas fa-search text-gray-400"></i>
+                        </div>
+                        <input type="text" id="searchInput" class="bg-gray-900 border border-gray-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full pl-10 p-2.5 placeholder-gray-500" placeholder="Pesquisar por ticker ou nome...">
+                    </div>
+                </div>
+                
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-gray-900 text-gray-400 text-sm uppercase tracking-wider">
+                                <th class="p-4 font-semibold border-b border-gray-700">Ativo</th>
+                                <th class="p-4 font-semibold border-b border-gray-700">Operação</th>
+                                <th class="p-4 font-semibold border-b border-gray-700 text-right">Qtd</th>
+                                <th class="p-4 font-semibold border-b border-gray-700 text-right">Preço Médio</th>
+                                <th class="p-4 font-semibold border-b border-gray-700 text-right">Custo (Tx)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tableBody" class="divide-y divide-gray-700"></tbody>
+                    </table>
+                    
+                    <!-- Mensagem para pesquisa vazia -->
+                    <div id="noResults" class="hidden p-8 text-center text-gray-400">
+                        <i class="fas fa-search-minus text-3xl mb-3"></i>
+                        <p>Nenhum ativo encontrado com esse nome.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Configuração do Worker do PDF.js
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+        // Elementos da Interface
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const loading = document.getElementById('loading');
+        const resultsContainer = document.getElementById('resultsContainer');
+        const tableBody = document.getElementById('tableBody');
+        const searchInput = document.getElementById('searchInput');
+        const noResults = document.getElementById('noResults');
+
+        // Lógica de Filtro / Pesquisa
+        searchInput.addEventListener('input', function(e) {
+            const term = e.target.value.toLowerCase();
+            const rows = tableBody.getElementsByTagName('tr');
+            let hasVisible = false;
+
+            for(let row of rows) {
+                // A coluna [0] é o nome do Ativo
+                const ativoName = row.cells[0].textContent.toLowerCase();
+                if(ativoName.includes(term)) {
+                    row.style.display = '';
+                    hasVisible = true;
+                } else {
+                    row.style.display = 'none';
+                }
+            }
+            
+            // Exibe mensagem se não houver resultados
+            if(!hasVisible && rows.length > 0) {
+                noResults.classList.remove('hidden');
+            } else {
+                noResults.classList.add('hidden');
+            }
+        });
+
+        // Eventos de Drag & Drop e Upload
+        dropZone.addEventListener('click', () => fileInput.click());
+        dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag-active'); });
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-active'));
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('drag-active');
+            if (e.dataTransfer.files.length) processFiles(e.dataTransfer.files);
+        });
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length) processFiles(e.target.files);
+        });
+
+        // Processamento dos Arquivos PDF
+        async function processFiles(files) {
+            loading.classList.remove('hidden');
+            resultsContainer.classList.add('hidden');
+            searchInput.value = ''; // Limpa pesquisa ao subir novo arquivo
+            noResults.classList.add('hidden');
+            
+            let fullText = '';
+            
+            try {
+                for (let file of files) {
+                    if (file.type !== 'application/pdf') continue;
+                    const buffer = await file.arrayBuffer();
+                    const pdf = await pdfjsLib.getDocument({data: buffer}).promise;
+                    
+                    for (let i = 1; i <= pdf.numPages; i++) {
+                        const page = await pdf.getPage(i);
+                        const content = await page.getTextContent();
+                        
+                        let rows = {};
+                        content.items.forEach(item => {
+                            const y = Math.round(item.transform[5]);
+                            if (!rows[y]) rows[y] = [];
+                            rows[y].push(item);
+                        });
+
+                        Object.keys(rows).sort((a, b) => b - a).forEach(y => {
+                            rows[y].sort((a, b) => a.transform[4] - b.transform[4]);
+                            const line = rows[y].map(item => item.str.trim()).filter(s => s).join(' ');
+                            fullText += line + '\n';
+                        });
+                    }
+                }
+                analyzeSinacorData(fullText);
+            } catch (error) {
+                alert("Erro ao ler PDF. Verifique se o arquivo não tem proteção por senha.");
+            }
+            loading.classList.add('hidden');
+        }
+
+        // Lógica de Leitura e Cálculos (Matemática das Notas)
+        function analyzeSinacorData(text) {
+            const lines = text.split('\n');
+            const operations = [];
+            let currentVolume = 0;
+            let totalTaxas = 0;
+
+            lines.forEach(line => {
+                // Captura taxas da B3 e Custódia
+                let taxMatch = line.match(/(Taxa de liquida[cç][aã]o|Emolumentos|Taxa de Tranfer[eê]ncia)\s+([\d.,]+)/i);
+                if (taxMatch) {
+                    totalTaxas += parseFloat(taxMatch[2].replace(/\./g, '').replace(',', '.'));
+                }
+
+                // Identifica linhas de negociação (Bovespa)
+                if (line.includes('Bovespa') || line.includes('1-BOVESPA')) {
+                    const parts = line.trim().split(/\s+/);
+                    const dc = parts[parts.length - 1];
+                    if (dc !== 'D' && dc !== 'C') return;
+
+                    const volumeStr = parts[parts.length - 2];
+                    const precoStr = parts[parts.length - 3];
+                    const qtdStr = parts[parts.length - 4];
+                    
+                    if (!volumeStr || !precoStr || !qtdStr) return;
+                    
+                    const volume = parseFloat(volumeStr.replace(/\./g, '').replace(',', '.'));
+                    const qtd = parseInt(qtdStr.replace(/\./g, ''));
+                    if (isNaN(volume) || isNaN(qtd)) return;
+
+                    const isCompra = (dc === 'D');
+                    
+                    let ativoName = "";
+                    for(let i = 1; i < parts.length - 4; i++) {
+                        const word = parts[i];
+                        if (['Bovespa', '1-BOVESPA', 'C', 'V', 'VIS', 'FRA', 'ON', 'PN', 'NM', 'N1', 'N2', 'ED', 'CI'].includes(word)) continue;
+                        ativoName += word + " ";
+                    }
+
+                    operations.push({ ativo: ativoName.trim(), tipo: isCompra ? 'Compra' : 'Venda', qtd: qtd, volume: volume });
+                    currentVolume += volume;
+                }
+            });
+
+            // Agrupamento para descobrir o Preço Médio
+            const summary = {};
+            let compras = 0, vendas = 0;
+
+            operations.forEach(op => {
+                const key = `${op.ativo}-${op.tipo}`;
+                if (!summary[key]) summary[key] = { ativo: op.ativo, tipo: op.tipo, qtd: 0, volume: 0 };
+                
+                summary[key].qtd += op.qtd;
+                summary[key].volume += op.volume;
+                op.tipo === 'Compra' ? compras += op.volume : vendas += op.volume;
+            });
+
+            const data = Object.values(summary).map(item => {
+                item.precoMedio = item.volume / item.qtd;
+                // Proporção do custo em relação ao volume
+                item.custo = currentVolume > 0 ? (item.volume / currentVolume) * totalTaxas : 0;
+                return item;
+            }).sort((a, b) => a.ativo.localeCompare(b.ativo));
+
+            updateDashboard(data, currentVolume, compras, vendas, totalTaxas);
+        }
+
+        function fmt(val) { return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val); }
+
+        function updateDashboard(data, vol, comp, vend, taxas) {
+            document.getElementById('resVolumeTotal').textContent = fmt(vol);
+            document.getElementById('resTotalCompras').textContent = fmt(comp);
+            document.getElementById('resTotalVendas').textContent = fmt(vend);
+            document.getElementById('resTotalTaxas').textContent = fmt(taxas);
+
+            tableBody.innerHTML = '';
+            data.forEach(row => {
+                const isCompra = row.tipo === 'Compra';
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-gray-750 transition-colors';
+                
+                // Badges com cores vibrantes para o Dark Mode
+                const badgeClass = isCompra 
+                    ? 'bg-green-900 text-green-300 border border-green-700' 
+                    : 'bg-purple-900 text-purple-300 border border-purple-700';
+
+                tr.innerHTML = `
+                    <td class="p-4 border-b border-gray-700 font-medium text-white">${row.ativo}</td>
+                    <td class="p-4 border-b border-gray-700"><span class="px-2 py-1 rounded text-xs font-bold shadow-sm ${badgeClass}">${row.tipo}</span></td>
+                    <td class="p-4 border-b border-gray-700 text-right text-gray-300">${row.qtd.toLocaleString('pt-BR')}</td>
+                    <td class="p-4 border-b border-gray-700 text-right font-medium text-gray-200">${fmt(row.precoMedio)}</td>
+                    <td class="p-4 border-b border-gray-700 text-right text-red-400 font-medium">${fmt(row.custo)}</td>
+                `;
+                tableBody.appendChild(tr);
+            });
+            resultsContainer.classList.remove('hidden');
+        }
+    </script>
+</body>
+</html>
