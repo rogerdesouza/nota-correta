@@ -4,32 +4,29 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Analisador de Notas de Corretagem (SINACOR)</title>
-    <!-- Tailwind CSS para interface -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- PDF.js para leitura offline do PDF no navegador -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
-        /* Fundo base escuro */
         body { background-color: #111827; color: #f3f4f6; }
-        /* Estado de Drag & Drop ativo */
         .drag-active { border-color: #3b82f6 !important; background-color: #1f2937 !important; }
-        /* Scrollbar customizada para tema escuro */
         ::-webkit-scrollbar { width: 8px; height: 8px; }
         ::-webkit-scrollbar-track { background: #1f2937; border-radius: 4px; }
         ::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 4px; }
         ::-webkit-scrollbar-thumb:hover { background: #6b7280; }
+        .copy-feedback { animation: flash 1s ease-out; }
+        @keyframes flash { 0% { background-color: #065f46; } 100% { background-color: transparent; } }
     </style>
 </head>
 <body class="min-h-screen font-sans antialiased">
 
-    <div class="max-w-6xl mx-auto px-4 py-8">
+    <div class="max-w-7xl mx-auto px-4 py-8">
         <header class="mb-8 text-center">
             <h1 class="text-3xl font-bold text-white mb-2">Analisador SINACOR (Offline)</h1>
-            <p class="text-gray-400">Arraste a sua nota em PDF. O processamento é local e seguro (Dark Mode).</p>
+            <p class="text-gray-400">Resumo Original + Apuração Automática de Day-Trade com Totalizador.</p>
         </header>
 
-        <!-- Área de Upload (Drag & Drop) -->
+        <!-- Área de Upload -->
         <div class="bg-gray-800 rounded-xl shadow-lg p-8 mb-8 border border-gray-700">
             <div id="dropZone" class="border-2 border-dashed border-gray-600 rounded-lg p-10 text-center transition-colors duration-200 cursor-pointer hover:bg-gray-700">
                 <input type="file" id="fileInput" class="hidden" accept="application/pdf" multiple>
@@ -37,20 +34,20 @@
                     <i class="fas fa-file-pdf text-5xl text-blue-500"></i>
                     <div>
                         <p class="text-lg font-medium text-white">Arraste seus PDFs aqui ou clique para selecionar</p>
-                        <p class="text-sm text-gray-400 mt-1">Suporta múltiplas notas simultaneamente (SINACOR)</p>
+                        <p class="text-sm text-gray-400 mt-1">Suporta múltiplas notas da B3 simultaneamente</p>
                     </div>
                 </div>
             </div>
             
             <div id="loading" class="hidden mt-6 text-center">
                 <i class="fas fa-circle-notch fa-spin text-3xl text-blue-500"></i>
-                <p class="mt-2 text-gray-300 font-medium">Extraindo dados e calculando médias...</p>
+                <p class="mt-2 text-gray-300 font-medium">Lendo dados...</p>
             </div>
         </div>
 
-        <!-- Tabela de Resultados -->
+        <!-- Resultados -->
         <div id="resultsContainer" class="hidden space-y-8">
-            <!-- Cards de Resumo Financeiro -->
+            <!-- Cards Financeiros -->
             <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div class="bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-700 border-l-4 border-l-blue-500">
                     <p class="text-sm text-gray-400 font-medium">Volume Total</p>
@@ -65,23 +62,24 @@
                     <p class="text-2xl font-bold text-white" id="resTotalVendas">R$ 0,00</p>
                 </div>
                 <div class="bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-700 border-l-4 border-l-red-500">
-                    <p class="text-sm text-gray-400 font-medium">Taxas B3 Alocadas</p>
+                    <p class="text-sm text-gray-400 font-medium">Taxas B3 Totais</p>
                     <p class="text-2xl font-bold text-white" id="resTotalTaxas">R$ 0,00</p>
                 </div>
             </div>
 
-            <!-- Área da Tabela com Barra de Pesquisa -->
+            <!-- Pesquisa Global -->
+            <div class="relative max-w-md mx-auto md:mx-0">
+                <div class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+                    <i class="fas fa-search text-gray-400"></i>
+                </div>
+                <input type="text" id="searchInput" class="bg-gray-900 border border-gray-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full pl-10 p-3 placeholder-gray-500 shadow-lg" placeholder="Pesquisar por ativo (ex: VALE3, ALLOS)...">
+            </div>
+
+            <!-- TABELA 1: PREÇO MÉDIO POR ATIVO -->
             <div class="bg-gray-800 rounded-xl shadow-lg border border-gray-700 overflow-hidden">
-                <div class="p-6 border-b border-gray-700 flex flex-col md:flex-row justify-between items-center gap-4">
+                <div class="p-5 border-b border-gray-700 bg-gray-900/50">
                     <h2 class="text-xl font-bold text-white">Preço Médio por Ativo</h2>
-                    
-                    <!-- Campo de Pesquisa -->
-                    <div class="relative w-full md:w-72">
-                        <div class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-                            <i class="fas fa-search text-gray-400"></i>
-                        </div>
-                        <input type="text" id="searchInput" class="bg-gray-900 border border-gray-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full pl-10 p-2.5 placeholder-gray-500" placeholder="Pesquisar por ticker ou nome...">
-                    </div>
+                    <p class="text-sm text-gray-400">Resumo geral com custo proporcional alocado e PM clássico.</p>
                 </div>
                 
                 <div class="overflow-x-auto">
@@ -89,64 +87,112 @@
                         <thead>
                             <tr class="bg-gray-900 text-gray-400 text-sm uppercase tracking-wider">
                                 <th class="p-4 font-semibold border-b border-gray-700">Ativo</th>
-                                <th class="p-4 font-semibold border-b border-gray-700">Operação</th>
+                                <th class="p-4 font-semibold border-b border-gray-700 text-center">Operação</th>
                                 <th class="p-4 font-semibold border-b border-gray-700 text-right">Qtd</th>
                                 <th class="p-4 font-semibold border-b border-gray-700 text-right">Preço Médio</th>
                                 <th class="p-4 font-semibold border-b border-gray-700 text-right">Custo (Tx)</th>
                             </tr>
                         </thead>
-                        <tbody id="tableBody" class="divide-y divide-gray-700"></tbody>
+                        <tbody id="summaryTableBody" class="divide-y divide-gray-700"></tbody>
                     </table>
-                    
-                    <!-- Mensagem para pesquisa vazia -->
-                    <div id="noResults" class="hidden p-8 text-center text-gray-400">
-                        <i class="fas fa-search-minus text-3xl mb-3"></i>
-                        <p>Nenhum ativo encontrado com esse nome.</p>
+                </div>
+            </div>
+
+            <!-- TABELA 2: DAY TRADE -->
+            <div class="bg-gray-800 rounded-xl shadow-lg border border-gray-700 overflow-hidden">
+                <div class="p-5 border-b border-gray-700 bg-gray-900/50 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                    <div>
+                        <h2 class="text-xl font-bold text-white">Apuração de Day-Trade</h2>
+                        <p class="text-sm text-gray-400">Operações casadas (Compra e Venda do mesmo ativo no mesmo dia).</p>
                     </div>
                 </div>
+                
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse whitespace-nowrap">
+                        <thead>
+                            <tr class="bg-gray-900 text-gray-400 text-xs uppercase tracking-wider">
+                                <th class="p-4 font-semibold border-b border-gray-700">Ativo</th>
+                                <th class="p-4 font-semibold border-b border-gray-700">Data</th>
+                                <th class="p-4 font-semibold border-b border-gray-700 text-center">Tipo</th>
+                                <th class="p-4 font-semibold border-b border-gray-700 text-right">Qtd</th>
+                                <th class="p-4 font-semibold border-b border-gray-700 text-right text-green-400">PM Compra</th>
+                                <th class="p-4 font-semibold border-b border-gray-700 text-right text-purple-400">PM Venda</th>
+                                <th class="p-4 font-semibold border-b border-gray-700 text-center">Mod</th>
+                                <th class="p-4 font-semibold border-b border-gray-700 text-right">Bruto</th>
+                                <th class="p-4 font-semibold border-b border-gray-700 text-right text-red-400">Custos DT</th>
+                                <th class="p-4 font-semibold border-b border-gray-700 text-right text-blue-300">Líquido</th>
+                                <th class="p-4 font-semibold border-b border-gray-700 text-center">
+                                    <button onclick="copyAllLines()" class="bg-blue-600 hover:bg-blue-500 text-white py-1 px-3 rounded shadow transition flex items-center gap-2 mx-auto">
+                                        <i class="fas fa-copy"></i> Copiar Tudo
+                                    </button>
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody id="detailedTableBody" class="divide-y divide-gray-700 text-sm"></tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <div id="noResults" class="hidden p-8 text-center text-gray-400 bg-gray-800 rounded-xl border border-gray-700 shadow-lg">
+                <i class="fas fa-search-minus text-3xl mb-3"></i>
+                <p>Nenhum ativo encontrado nas tabelas com esse nome.</p>
             </div>
         </div>
     </div>
 
+    <!-- Toast de Notificação -->
+    <div id="toast" class="fixed bottom-4 right-4 bg-gray-900 text-white px-6 py-3 rounded-lg shadow-xl transform transition-transform duration-300 translate-y-full opacity-0 flex items-center gap-3 border border-gray-700 z-50">
+        <i class="fas fa-check-circle text-green-400 text-xl"></i>
+        <span id="toastMsg">Copiado para a área de transferência!</span>
+    </div>
+
     <script>
-        // Configuração do Worker do PDF.js
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
-        // Elementos da Interface
         const dropZone = document.getElementById('dropZone');
         const fileInput = document.getElementById('fileInput');
         const loading = document.getElementById('loading');
         const resultsContainer = document.getElementById('resultsContainer');
-        const tableBody = document.getElementById('tableBody');
+        const summaryTableBody = document.getElementById('summaryTableBody');
+        const detailedTableBody = document.getElementById('detailedTableBody');
         const searchInput = document.getElementById('searchInput');
         const noResults = document.getElementById('noResults');
 
-        // Lógica de Filtro / Pesquisa
+        let allTsvData = "";
+
         searchInput.addEventListener('input', function(e) {
             const term = e.target.value.toLowerCase();
-            const rows = tableBody.getElementsByTagName('tr');
+            const sumRows = summaryTableBody.getElementsByTagName('tr');
+            const detRows = detailedTableBody.getElementsByTagName('tr');
             let hasVisible = false;
 
-            for(let row of rows) {
-                // A coluna [0] é o nome do Ativo
-                const ativoName = row.cells[0].textContent.toLowerCase();
-                if(ativoName.includes(term)) {
-                    row.style.display = '';
-                    hasVisible = true;
-                } else {
-                    row.style.display = 'none';
+            const filterRows = (rows) => {
+                for(let row of rows) {
+                    if (row.classList.contains('total-row')) continue; // Ignora linha de total na pesquisa
+                    const ativoName = row.cells[0].textContent.toLowerCase();
+                    if(ativoName.includes(term)) {
+                        row.style.display = '';
+                        hasVisible = true;
+                    } else {
+                        row.style.display = 'none';
+                    }
                 }
-            }
+            };
+
+            filterRows(sumRows);
+            filterRows(detRows);
             
-            // Exibe mensagem se não houver resultados
-            if(!hasVisible && rows.length > 0) {
+            // Reexibe a linha de total se houver resultados na tabela 2
+            const totalRow = detailedTableBody.querySelector('.total-row');
+            if (totalRow) totalRow.style.display = hasVisible ? '' : 'none';
+            
+            if(!hasVisible && (sumRows.length > 0 || detRows.length > 0)) {
                 noResults.classList.remove('hidden');
             } else {
                 noResults.classList.add('hidden');
             }
         });
 
-        // Eventos de Drag & Drop e Upload
         dropZone.addEventListener('click', () => fileInput.click());
         dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag-active'); });
         dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-active'));
@@ -159,12 +205,12 @@
             if (e.target.files.length) processFiles(e.target.files);
         });
 
-        // Processamento dos Arquivos PDF
         async function processFiles(files) {
             loading.classList.remove('hidden');
             resultsContainer.classList.add('hidden');
-            searchInput.value = ''; // Limpa pesquisa ao subir novo arquivo
+            searchInput.value = ''; 
             noResults.classList.add('hidden');
+            allTsvData = "";
             
             let fullText = '';
             
@@ -194,26 +240,45 @@
                 }
                 analyzeSinacorData(fullText);
             } catch (error) {
-                alert("Erro ao ler PDF. Verifique se o arquivo não tem proteção por senha.");
+                alert("Erro ao ler PDF. Verifique se não há senha.");
             }
             loading.classList.add('hidden');
         }
 
-        // Lógica de Leitura e Cálculos (Matemática das Notas)
+        function formatTsv(num) {
+            return num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 4, useGrouping: false });
+        }
+
         function analyzeSinacorData(text) {
             const lines = text.split('\n');
             const operations = [];
-            let currentVolume = 0;
-            let totalTaxas = 0;
+            
+            let currentDate = 'Desconhecida';
+            let pendingDateSearch = false;
+            
+            const volumePorData = {};
+            const taxasPorData = {};
+            
+            let globalVolume = 0;
+            let globalTaxas = 0;
 
             lines.forEach(line => {
-                // Captura taxas da B3 e Custódia
-                let taxMatch = line.match(/(Taxa de liquida[cç][aã]o|Emolumentos|Taxa de Tranfer[eê]ncia)\s+([\d.,]+)/i);
-                if (taxMatch) {
-                    totalTaxas += parseFloat(taxMatch[2].replace(/\./g, '').replace(',', '.'));
+                if (line.match(/Data pregão/i)) pendingDateSearch = true;
+                if (pendingDateSearch) {
+                    const dateMatch = line.match(/(\d{2}\/\d{2}\/\d{4})/);
+                    if (dateMatch) {
+                        currentDate = dateMatch[1];
+                        pendingDateSearch = false;
+                    }
                 }
 
-                // Identifica linhas de negociação (Bovespa)
+                let taxMatch = line.match(/(Taxa de liquida[cç][aã]o|Emolumentos|Taxa de Tranfer[eê]ncia)[^\d]+([\d.,]+)/i);
+                if (taxMatch) {
+                    const parsedTaxa = parseFloat(taxMatch[2].replace(/\./g, '').replace(',', '.'));
+                    globalTaxas += parsedTaxa;
+                    taxasPorData[currentDate] = (taxasPorData[currentDate] || 0) + parsedTaxa;
+                }
+
                 if (line.includes('Bovespa') || line.includes('1-BOVESPA')) {
                     const parts = line.trim().split(/\s+/);
                     const dc = parts[parts.length - 1];
@@ -232,68 +297,207 @@
                     const isCompra = (dc === 'D');
                     
                     let ativoName = "";
+                    let isFII = false;
                     for(let i = 1; i < parts.length - 4; i++) {
                         const word = parts[i];
-                        if (['Bovespa', '1-BOVESPA', 'C', 'V', 'VIS', 'FRA', 'ON', 'PN', 'NM', 'N1', 'N2', 'ED', 'CI'].includes(word)) continue;
+                        if (['Bovespa', '1-BOVESPA', 'C', 'V', 'VIS', 'FRA', 'ON', 'PN', 'NM', 'N1', 'N2', 'ED'].includes(word)) continue;
+                        if (word === 'CI' || word === 'FII') isFII = true;
                         ativoName += word + " ";
                     }
 
-                    operations.push({ ativo: ativoName.trim(), tipo: isCompra ? 'Compra' : 'Venda', qtd: qtd, volume: volume });
-                    currentVolume += volume;
+                    operations.push({ 
+                        data: currentDate, 
+                        ativo: ativoName.trim(), 
+                        classeAtivo: isFII ? 'F' : 'A',
+                        tipo: isCompra ? 'Compra' : 'Venda', 
+                        qtd: qtd, 
+                        volume: volume 
+                    });
+                    
+                    globalVolume += volume;
+                    volumePorData[currentDate] = (volumePorData[currentDate] || 0) + volume;
                 }
             });
 
-            // Agrupamento para descobrir o Preço Médio
-            const summary = {};
-            let compras = 0, vendas = 0;
+            const sumData = {};
+            let totalCompras = 0, totalVendas = 0;
+            const dayTradeMap = {};
 
             operations.forEach(op => {
-                const key = `${op.ativo}-${op.tipo}`;
-                if (!summary[key]) summary[key] = { ativo: op.ativo, tipo: op.tipo, qtd: 0, volume: 0 };
-                
-                summary[key].qtd += op.qtd;
-                summary[key].volume += op.volume;
-                op.tipo === 'Compra' ? compras += op.volume : vendas += op.volume;
+                const sumKey = `${op.ativo}-${op.tipo}`;
+                if (!sumData[sumKey]) sumData[sumKey] = { ativo: op.ativo, tipo: op.tipo, qtd: 0, volume: 0 };
+                sumData[sumKey].qtd += op.qtd;
+                sumData[sumKey].volume += op.volume;
+                op.tipo === 'Compra' ? totalCompras += op.volume : totalVendas += op.volume;
+
+                const dtKey = `${op.data}|${op.ativo}`;
+                if (!dayTradeMap[dtKey]) {
+                    dayTradeMap[dtKey] = { data: op.data, ativo: op.ativo, classeAtivo: op.classeAtivo, qtdCompra: 0, volCompra: 0, qtdVenda: 0, volVenda: 0 };
+                }
+                if (op.tipo === 'Compra') {
+                    dayTradeMap[dtKey].qtdCompra += op.qtd;
+                    dayTradeMap[dtKey].volCompra += op.volume;
+                } else {
+                    dayTradeMap[dtKey].qtdVenda += op.qtd;
+                    dayTradeMap[dtKey].volVenda += op.volume;
+                }
             });
 
-            const data = Object.values(summary).map(item => {
+            const summaryArray = Object.values(sumData).map(item => {
                 item.precoMedio = item.volume / item.qtd;
-                // Proporção do custo em relação ao volume
-                item.custo = currentVolume > 0 ? (item.volume / currentVolume) * totalTaxas : 0;
+                item.custo = globalVolume > 0 ? (item.volume / globalVolume) * globalTaxas : 0;
                 return item;
             }).sort((a, b) => a.ativo.localeCompare(b.ativo));
 
-            updateDashboard(data, currentVolume, compras, vendas, totalTaxas);
+            const dtArray = [];
+            Object.values(dayTradeMap).forEach(item => {
+                const dtQtd = Math.min(item.qtdCompra, item.qtdVenda);
+                
+                if (dtQtd > 0) {
+                    const pmCompra = item.volCompra / item.qtdCompra;
+                    const pmVenda = item.volVenda / item.qtdVenda;
+                    const volCompraDT = dtQtd * pmCompra;
+                    const volVendaDT = dtQtd * pmVenda;
+                    const resultadoBruto = volVendaDT - volCompraDT;
+
+                    const dayVol = volumePorData[item.data] || 1;
+                    const dayTax = taxasPorData[item.data] || 0;
+                    
+                    const volumeDT = volCompraDT + volVendaDT;
+                    const custoDT = (volumeDT / dayVol) * dayTax;
+                    const lucroPrejuizoLiquido = resultadoBruto - custoDT;
+
+                    dtArray.push({
+                        ativo: item.ativo,
+                        data: item.data,
+                        classeAtivo: item.classeAtivo,
+                        modalidade: 'D',
+                        qtd: dtQtd,
+                        pmCompra: pmCompra,
+                        pmVenda: pmVenda,
+                        bruto: resultadoBruto,
+                        custo: custoDT,
+                        liquido: lucroPrejuizoLiquido
+                    });
+                }
+            });
+
+            dtArray.sort((a, b) => {
+                const d1 = a.data.split('/').reverse().join('');
+                const d2 = b.data.split('/').reverse().join('');
+                if (d1 !== d2) return d1.localeCompare(d2);
+                return a.ativo.localeCompare(b.ativo);
+            });
+
+            updateDashboard(summaryArray, dtArray, globalVolume, totalCompras, totalVendas, globalTaxas);
         }
 
         function fmt(val) { return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val); }
 
-        function updateDashboard(data, vol, comp, vend, taxas) {
+        window.copyLine = function(btnElement, textToCopy) {
+            navigator.clipboard.writeText(textToCopy).then(() => {
+                showToast("Linha copiada para planilhas!");
+                const row = btnElement.closest('tr');
+                row.classList.add('copy-feedback');
+                setTimeout(() => row.classList.remove('copy-feedback'), 1000);
+            });
+        };
+
+        window.copyAllLines = function() {
+            if (!allTsvData) return showToast("Nenhum dado para copiar.", false);
+            const headers = "Ativo\tData\tTipo\tQtd\tPM Compra\tPM Venda\tMod\tBruto\tCustos DT\tLiquido\n";
+            navigator.clipboard.writeText(headers + allTsvData).then(() => {
+                showToast("Todas as linhas copiadas!");
+            });
+        };
+
+        function showToast(message, isSuccess = true) {
+            const toast = document.getElementById('toast');
+            document.getElementById('toastMsg').textContent = message;
+            toast.classList.remove('translate-y-full', 'opacity-0');
+            toast.classList.add('translate-y-0', 'opacity-100');
+            setTimeout(() => {
+                toast.classList.remove('translate-y-0', 'opacity-100');
+                toast.classList.add('translate-y-full', 'opacity-0');
+            }, 3000);
+        }
+
+        function updateDashboard(sumArr, dtArr, vol, comp, vend, taxas) {
             document.getElementById('resVolumeTotal').textContent = fmt(vol);
             document.getElementById('resTotalCompras').textContent = fmt(comp);
             document.getElementById('resTotalVendas').textContent = fmt(vend);
             document.getElementById('resTotalTaxas').textContent = fmt(taxas);
 
-            tableBody.innerHTML = '';
-            data.forEach(row => {
+            summaryTableBody.innerHTML = '';
+            sumArr.forEach(row => {
                 const isCompra = row.tipo === 'Compra';
                 const tr = document.createElement('tr');
                 tr.className = 'hover:bg-gray-750 transition-colors';
-                
-                // Badges com cores vibrantes para o Dark Mode
-                const badgeClass = isCompra 
-                    ? 'bg-green-900 text-green-300 border border-green-700' 
-                    : 'bg-purple-900 text-purple-300 border border-purple-700';
+                const badgeClass = isCompra ? 'bg-green-900 text-green-300 border border-green-700' : 'bg-purple-900 text-purple-300 border border-purple-700';
 
                 tr.innerHTML = `
                     <td class="p-4 border-b border-gray-700 font-medium text-white">${row.ativo}</td>
-                    <td class="p-4 border-b border-gray-700"><span class="px-2 py-1 rounded text-xs font-bold shadow-sm ${badgeClass}">${row.tipo}</span></td>
+                    <td class="p-4 border-b border-gray-700 text-center"><span class="px-2 py-1 rounded text-xs font-bold shadow-sm ${badgeClass}">${row.tipo}</span></td>
                     <td class="p-4 border-b border-gray-700 text-right text-gray-300">${row.qtd.toLocaleString('pt-BR')}</td>
                     <td class="p-4 border-b border-gray-700 text-right font-medium text-gray-200">${fmt(row.precoMedio)}</td>
                     <td class="p-4 border-b border-gray-700 text-right text-red-400 font-medium">${fmt(row.custo)}</td>
                 `;
-                tableBody.appendChild(tr);
+                summaryTableBody.appendChild(tr);
             });
+
+            detailedTableBody.innerHTML = '';
+            allTsvData = "";
+            let somaTotalLiquidoDT = 0;
+            
+            if (dtArr.length === 0) {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `<td colspan="11" class="p-8 text-center text-gray-400">Nenhum Day-Trade identificado nestas notas.</td>`;
+                detailedTableBody.appendChild(tr);
+            } else {
+                dtArr.forEach(row => {
+                    somaTotalLiquidoDT += row.liquido;
+
+                    const tr = document.createElement('tr');
+                    tr.className = 'hover:bg-gray-750 transition-colors';
+                    const colorLiquido = row.liquido >= 0 ? 'text-green-400' : 'text-red-400';
+                    const colorAtivo = row.classeAtivo === 'A' ? 'text-blue-300 border-blue-700 bg-blue-900/30' : 'text-orange-300 border-orange-700 bg-orange-900/30';
+
+                    const tsvLine = `${row.ativo}\t${row.data}\t${row.classeAtivo}\t${row.qtd}\t${formatTsv(row.pmCompra)}\t${formatTsv(row.pmVenda)}\t${row.modalidade}\t${formatTsv(row.bruto)}\t${formatTsv(row.custo)}\t${formatTsv(row.liquido)}`;
+                    allTsvData += tsvLine + "\n";
+
+                    tr.innerHTML = `
+                        <td class="p-4 border-b border-gray-700 font-medium text-white">${row.ativo}</td>
+                        <td class="p-4 border-b border-gray-700 text-gray-400">${row.data}</td>
+                        <td class="p-4 border-b border-gray-700 text-center"><span class="px-2 py-0.5 border rounded text-xs font-bold ${colorAtivo}">${row.classeAtivo}</span></td>
+                        <td class="p-4 border-b border-gray-700 text-right text-gray-300">${row.qtd.toLocaleString('pt-BR')}</td>
+                        <td class="p-4 border-b border-gray-700 text-right font-medium text-gray-200">${fmt(row.pmCompra)}</td>
+                        <td class="p-4 border-b border-gray-700 text-right font-medium text-gray-200">${fmt(row.pmVenda)}</td>
+                        <td class="p-4 border-b border-gray-700 text-center"><span class="px-2 py-0.5 bg-yellow-900/50 border border-yellow-700 text-yellow-500 rounded text-xs font-bold">${row.modalidade}</span></td>
+                        <td class="p-4 border-b border-gray-700 text-right text-gray-300">${fmt(row.bruto)}</td>
+                        <td class="p-4 border-b border-gray-700 text-right text-red-400">${fmt(row.custo)}</td>
+                        <td class="p-4 border-b border-gray-700 text-right font-bold ${colorLiquido}">${fmt(row.liquido)}</td>
+                        <td class="p-4 border-b border-gray-700 text-center">
+                            <button onclick="copyLine(this, '${tsvLine}')" class="text-gray-400 hover:text-white hover:bg-gray-600 p-1.5 rounded transition" title="Copiar Linha">
+                                <i class="fas fa-paste"></i>
+                            </button>
+                        </td>
+                    `;
+                    detailedTableBody.appendChild(tr);
+                });
+
+                // Adiciona a linha de TOTAL LÍQUIDO DAY-TRADE
+                const trTotal = document.createElement('tr');
+                trTotal.className = 'total-row bg-gray-900 font-bold border-t-2 border-gray-500';
+                const colorTotalLiquido = somaTotalLiquidoDT >= 0 ? 'text-green-400' : 'text-red-400';
+                
+                trTotal.innerHTML = `
+                    <td colspan="9" class="p-4 text-right text-white uppercase tracking-wider">Total Líquido Day-Trade:</td>
+                    <td class="p-4 text-right text-lg ${colorTotalLiquido}">${fmt(somaTotalLiquidoDT)}</td>
+                    <td class="p-4 border-b border-gray-700"></td>
+                `;
+                detailedTableBody.appendChild(trTotal);
+            }
+
             resultsContainer.classList.remove('hidden');
         }
     </script>
